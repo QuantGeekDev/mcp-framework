@@ -12,6 +12,12 @@ export type PromptArguments<T extends PromptArgumentSchema<any>> = {
   [K in keyof T]: z.infer<T[K]["type"]>;
 };
 
+export type PromptCompletion = {
+  values: string[];
+  total?: number;
+  hasMore?: boolean;
+};
+
 export interface PromptProtocol {
   name: string;
   description: string;
@@ -38,6 +44,7 @@ export interface PromptProtocol {
       };
     }>
   >;
+  complete?(argument: string, name: string): Promise<PromptCompletion>;
 }
 
 export abstract class MCPPrompt<TArgs extends Record<string, any> = {}>
@@ -77,12 +84,23 @@ export abstract class MCPPrompt<TArgs extends Record<string, any> = {}>
   async getMessages(args: Record<string, unknown> = {}) {
     const zodSchema = z.object(
       Object.fromEntries(
-        Object.entries(this.schema).map(([key, schema]) => [key, schema.type])
-      )
+        Object.entries(this.schema).map(([key, schema]) => [key, schema.type]),
+      ),
     );
 
     const validatedArgs = (await zodSchema.parse(args)) as TArgs;
     return this.generateMessages(validatedArgs);
+  }
+
+  async complete?(
+    argumentName: string,
+    value: string,
+  ): Promise<PromptCompletion> {
+    return {
+      values: [],
+      total: 0,
+      hasMore: false,
+    };
   }
 
   protected async fetch<T>(url: string, init?: RequestInit): Promise<T> {
