@@ -25,7 +25,7 @@ export type ResourceCompletion = {
   hasMore?: boolean;
 };
 
-export interface ResourceProtocol {
+export interface ResourceProtocol<TArgs extends Record<string, any> = {}> {
   uri: string;
   name: string;
   description?: string;
@@ -35,10 +35,15 @@ export interface ResourceProtocol {
   read(): Promise<ResourceContent[]>;
   subscribe?(): Promise<void>;
   unsubscribe?(): Promise<void>;
-  complete?(argument: string, name: string): Promise<ResourceCompletion>;
+  complete?<K extends keyof TArgs & string>(
+    argumentName: K,
+    value: TArgs[K],
+  ): Promise<ResourceCompletion>;
 }
 
-export abstract class MCPResource implements ResourceProtocol {
+export abstract class MCPResource<TArgs extends Record<string, any> = {}>
+  implements ResourceProtocol<TArgs>
+{
   abstract uri: string;
   abstract name: string;
   description?: string;

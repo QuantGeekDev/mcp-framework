@@ -255,7 +255,9 @@ export class MCPServer {
       const { ref, argument } = request.params;
 
       if (ref.type === "ref/prompt") {
-        const prompt = this.promptsMap.get(ref.name);
+        const prompt = this.promptsMap.get(ref.name) as
+          | PromptProtocol<any>
+          | undefined;
         if (!prompt?.complete) {
           return { completion: { values: [] } };
         }
@@ -265,7 +267,9 @@ export class MCPServer {
       }
 
       if (ref.type === "ref/resource") {
-        const resource = this.resourcesMap.get(ref.uri);
+        const resource = this.resourcesMap.get(ref.uri) as
+          | ResourceProtocol<any>
+          | undefined;
         if (!resource?.complete) {
           return { completion: { values: [] } };
         }

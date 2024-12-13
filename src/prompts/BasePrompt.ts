@@ -18,7 +18,7 @@ export type PromptCompletion = {
   hasMore?: boolean;
 };
 
-export interface PromptProtocol {
+export interface PromptProtocol<TArgs extends Record<string, any> = {}> {
   name: string;
   description: string;
   promptDefinition: {
@@ -30,7 +30,7 @@ export interface PromptProtocol {
       required?: boolean;
     }>;
   };
-  getMessages(args?: Record<string, unknown>): Promise<
+  getMessages(args?: Partial<TArgs>): Promise<
     Array<{
       role: string;
       content: {
@@ -44,11 +44,14 @@ export interface PromptProtocol {
       };
     }>
   >;
-  complete?(argument: string, name: string): Promise<PromptCompletion>;
+  complete?<K extends keyof TArgs & string>(
+    argumentName: K,
+    value: string,
+  ): Promise<PromptCompletion>;
 }
 
 export abstract class MCPPrompt<TArgs extends Record<string, any> = {}>
-  implements PromptProtocol
+  implements PromptProtocol<TArgs>
 {
   abstract name: string;
   abstract description: string;
@@ -92,10 +95,14 @@ export abstract class MCPPrompt<TArgs extends Record<string, any> = {}>
     return this.generateMessages(validatedArgs);
   }
 
-  async complete?(
-    argumentName: string,
+  async complete<K extends keyof TArgs & string>(
+    argumentName: K,
     value: string,
   ): Promise<PromptCompletion> {
+    if (!this.schema[argumentName].type) {
+      throw new Error(`No schema found for argument: ${argumentName}`);
+    }
+
     return {
       values: [],
       total: 0,
