@@ -30,7 +30,7 @@ export interface PromptProtocol<TArgs extends Record<string, any> = {}> {
       required?: boolean;
     }>;
   };
-  getMessages(args?: Partial<TArgs>): Promise<
+  getMessages(args?: Record<string, unknown>): Promise<
     Array<{
       role: string;
       content: {
