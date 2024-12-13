@@ -12,7 +12,13 @@ export type PromptArguments<T extends PromptArgumentSchema<any>> = {
   [K in keyof T]: z.infer<T[K]["type"]>;
 };
 
-export interface PromptProtocol {
+export type PromptCompletion = {
+  values: string[];
+  total?: number;
+  hasMore?: boolean;
+};
+
+export interface PromptProtocol<TArgs extends Record<string, any> = {}> {
   name: string;
   description: string;
   promptDefinition: {
@@ -38,10 +44,14 @@ export interface PromptProtocol {
       };
     }>
   >;
+  complete?<K extends keyof TArgs & string>(
+    argumentName: K,
+    value: string,
+  ): Promise<PromptCompletion>;
 }
 
 export abstract class MCPPrompt<TArgs extends Record<string, any> = {}>
-  implements PromptProtocol
+  implements PromptProtocol<TArgs>
 {
   abstract name: string;
   abstract description: string;
@@ -77,12 +87,27 @@ export abstract class MCPPrompt<TArgs extends Record<string, any> = {}>
   async getMessages(args: Record<string, unknown> = {}) {
     const zodSchema = z.object(
       Object.fromEntries(
-        Object.entries(this.schema).map(([key, schema]) => [key, schema.type])
-      )
+        Object.entries(this.schema).map(([key, schema]) => [key, schema.type]),
+      ),
     );
 
     const validatedArgs = (await zodSchema.parse(args)) as TArgs;
     return this.generateMessages(validatedArgs);
+  }
+
+  async complete<K extends keyof TArgs & string>(
+    argumentName: K,
+    value: string,
+  ): Promise<PromptCompletion> {
+    if (!this.schema[argumentName].type) {
+      throw new Error(`No schema found for argument: ${argumentName}`);
+    }
+
+    return {
+      values: [],
+      total: 0,
+      hasMore: false,
+    };
   }
 
   protected async fetch<T>(url: string, init?: RequestInit): Promise<T> {

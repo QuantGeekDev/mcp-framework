@@ -14,6 +14,8 @@ Get started fast with mcp-framework ⚡⚡⚡
 - 🏗️ Powerful abstractions with full type safety
 - 🚀 Simple server setup and configuration
 - 📦 CLI for rapid development and project scaffolding
+- 🔍 Built-in support for autocompletion
+- 📝 URI templates for dynamic resources
 
 ## Quick Start
 
@@ -66,7 +68,7 @@ mcp add prompt price-analysis
 ### Adding a Resource
 
 ```bash
-# Add a new prompt
+# Add a new resource
 mcp add resource market-data
 ```
 
@@ -175,7 +177,7 @@ export default ExampleTool;
 
 ### 2. Prompts (Optional)
 
-Prompts help structure conversations with Claude:
+Prompts help structure conversations with Claude and can provide completion suggestions:
 
 ```typescript
 import { MCPPrompt } from "mcp-framework";
@@ -203,6 +205,21 @@ class GreetingPrompt extends MCPPrompt<GreetingInput> {
     },
   };
 
+  // Provide auto-completions for arguments
+  async complete(argumentName: string, value: string) {
+    if (argumentName === "language") {
+      const languages = ["English", "Spanish", "French", "German"];
+      const matches = languages.filter(lang => 
+        lang.toLowerCase().startsWith(value.toLowerCase())
+      );
+      return {
+        values: matches,
+        total: matches.length
+      };
+    }
+    return { values: [] };
+  }
+
   async generateMessages({ name, language = "English" }: GreetingInput) {
     return [
       {
@@ -221,7 +238,7 @@ export default GreetingPrompt;
 
 ### 3. Resources (Optional)
 
-Resources provide data access capabilities:
+Resources provide data access capabilities with support for dynamic URIs and completions:
 
 ```typescript
 import { MCPResource, ResourceContent } from "mcp-framework";
@@ -232,10 +249,32 @@ class ConfigResource extends MCPResource {
   description = "Current application configuration";
   mimeType = "application/json";
 
+  protected template = {
+    uriTemplate: "config://app/{section}",
+    description: "Access settings by section"
+  };
+
+  // Optional: Provide completions for URI template arguments  
+  async complete(argumentName: string, value: string) {
+    if (argumentName === "section") {
+      const sections = ["theme", "network"];
+      return {
+        values: sections.filter(s => s.startsWith(value)),
+        total: sections.length
+      };
+    }
+    return { values: [] };
+  }
+
   async read(): Promise<ResourceContent[]> {
     const config = {
-      theme: "dark",
-      language: "en",
+      theme: {
+        mode: "dark",
+        language: "en",
+      },
+      network: {
+        proxy: "none"
+      }
     };
 
     return [
@@ -294,12 +333,15 @@ Each feature should be in its own file and export a default class that extends t
 - Manages prompt arguments and validation
 - Generates message sequences for LLM interactions
 - Supports dynamic prompt templates
+- Optional completion support for arguments
 
 #### MCPResource
 
 - Exposes data through URI-based system
 - Supports text and binary content
 - Optional subscription capabilities for real-time updates
+- Optional URI templates for dynamic access
+- Optional completion support for template arguments
 
 ## Type Safety
 
