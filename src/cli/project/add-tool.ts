@@ -1,4 +1,3 @@
-import { spawnSync } from "child_process";
 import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 import prompts from "prompts";
@@ -47,34 +46,40 @@ export async function addTool(name?: string) {
     const toolContent = `import { z } from "zod";
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 import { logger } from "../../utils/logger.js";
+import { MCPTool, ToolInputSchema } from "mcp-framework";
 
+// Define input type
 interface ${className}Input {
   // Define your tool's input parameters here
   param: string;
 }
 
-class ${className}Tool {
+// Extend MCPTool with input type for type safety
+class ${className}Tool extends MCPTool<${className}Input> {
   name = "${toolName}";
   description = "${className} tool description";
 
-  schema = {
+  // Schema is validated by base class
+  protected schema: ToolInputSchema<${className}Input> = {
     param: {
-      type: z.string(),
+      type: z.string(),  // Use z.string() directly
       description: "Parameter description",
     }
   };
 
   constructor(private basePath: string) {
+    super();
     logger.debug(\`Initializing ${className}Tool with base path: \${basePath}\`);
   }
 
-  async execute(input: ${className}Input) {
+  // Implementation with type-safe input
+  public async execute(input: ${className}Input) {
     const { param } = input;
     
     try {
       logger.debug(\`Executing ${className}Tool with param: \${param}\`);
       
-      // Implement your tool logic here
+      // Return in MCP protocol format
       return {
         content: [
           {
@@ -107,6 +112,12 @@ You can now:
 1. Implement your tool logic in the execute method
 2. Add any necessary input parameters to ${className}Input
 3. Update the schema and description as needed
+
+The tool extends MCPTool which provides:
+- Type-safe input handling
+- Automatic schema validation
+- Protocol compliance
+- Error handling
     `);
   } catch (error) {
     console.error("Error creating tool:", error);

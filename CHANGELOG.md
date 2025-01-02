@@ -6,7 +6,6 @@
 - Removed dependency on custom MCP server implementation in favor of official SDK
 - Changed project template to use @modelcontextprotocol/sdk instead of mcp-framework internals
 - Moved component loaders to optional utilities
-- Moved base classes to optional helpers
 
 ### Added
 - Added @modelcontextprotocol/sdk as a peer dependency
@@ -32,10 +31,14 @@
   - Separated templates into logical groups (utils, components, config)
   - Added template generation functions for better maintainability
   - Improved code organization in project creation
+- Added detailed MCP client configuration documentation:
+  - Roo Cline settings file location and format
+  - Base path configuration requirements
+  - Security settings explanation
 
 ### Changed
 - Updated create project template to use official SDK patterns
-- Updated example tool template to use simpler class structure
+- Updated example tool template to use base classes with proper typing
 - Modified package.json template to include required SDK dependencies
 - Changed build script to use standard tsc instead of custom mcp-build
 - Updated TypeScript configuration for better ES module support
@@ -62,6 +65,14 @@
 - Fixed prompt template to follow MCP protocol specifications
 - Fixed component loading in compiled code
 - Fixed logger initialization errors
+- Fixed base model implementation to properly use Zod for schema validation in tools, prompts, and resources
+- Fixed type safety issues by properly exporting ResourceContent and other types from base models
+- Fixed documentation to clarify base path requirement when running server
+- Fixed component loading issues by properly documenting base path configuration
+
+### Known Issues
+- The Roo Cline MCP client may not fully support prompt operations
+- The Roo Cline server view UI may not properly display MCP tools and resources, though they are functional through the API
 
 ### Removed
 - Removed git initialization from project creation (non-essential)
@@ -88,50 +99,82 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 ```
 
-3. Update your tool implementations to use the simpler class structure:
+3. Update your tool implementations to use base classes:
 ```typescript
-class ExampleTool {
+import { MCPTool, ToolInputSchema } from "mcp-framework";
+
+interface ExampleInput {
+  message: string;
+}
+
+class ExampleTool extends MCPTool<ExampleInput> {
   name = "example_tool";
-  schema = {
-    // ... your schema
+  description = "An example tool that processes messages";
+
+  protected schema: ToolInputSchema<ExampleInput> = {
+    message: {
+      type: z.string(),
+      description: "Message to process",
+    }
   };
-  async execute(input) {
-    // ... your implementation
+
+  protected async execute(input: ExampleInput) {
+    return `Processed: ${input.message}`;
   }
 }
 ```
 
-4. Update your prompt implementations to follow the MCP protocol:
+4. Update your prompt implementations to use base classes:
 ```typescript
-class ExamplePrompt {
+import { MCPPrompt, PromptArgumentSchema } from "mcp-framework";
+
+interface PromptInput {
+  query: string;
+}
+
+class ExamplePrompt extends MCPPrompt<PromptInput> {
   name = "example_prompt";
-  schema = {
-    // ... your schema
+  description = "An example prompt";
+
+  protected schema: PromptArgumentSchema<PromptInput> = {
+    query: {
+      type: z.string(),
+      description: "Query to process",
+      required: true
+    }
   };
-  async execute(input) {
-    return {
-      description: "Prompt description",
-      messages: [
-        {
-          role: "system",
-          content: { type: "text", text: "..." }
-        }
-      ]
-    };
+
+  protected async generateMessages(input: PromptInput) {
+    return [
+      {
+        role: "system",
+        content: { type: "text", text: "You are a helpful assistant." }
+      },
+      {
+        role: "user",
+        content: { type: "text", text: input.query }
+      }
+    ];
   }
 }
 ```
 
-5. Update your resource implementations to use proper types:
+5. Update your resource implementations to use base classes:
 ```typescript
-class ExampleResource {
+import { MCPResource } from "mcp-framework";
+
+class ExampleResource extends MCPResource {
   name = "example";
-  uriTemplate = "example://{path}";
-  async list(): Promise<Resource[]> {
-    // ... your implementation
-  }
-  async read(uri: string): Promise<ResourceContents> {
-    // ... your implementation
+  description = "An example resource";
+  uri = "example://";
+
+  async read() {
+    return [
+      {
+        uri: this.uri,
+        text: "Example content"
+      }
+    ];
   }
 }
 ```

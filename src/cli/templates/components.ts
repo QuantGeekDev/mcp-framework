@@ -2,27 +2,33 @@ export function generateExampleTool(): string {
   return `import { z } from "zod";
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 import { logger } from "../../utils/logger.js";
+import { MCPTool, ToolInputSchema } from "mcp-framework";
 
+// Define input type
 interface ExampleInput {
   message: string;
 }
 
-class ExampleTool {
+// Extend MCPTool with input type for type safety
+class ExampleTool extends MCPTool<ExampleInput> {
   name = "example_tool";
   description = "An example tool that processes messages";
 
-  schema = {
+  // Schema is validated by base class
+  protected schema: ToolInputSchema<ExampleInput> = {
     message: {
-      type: z.string(),
+      type: z.string(),  // Use z.string() directly
       description: "Message to process",
     }
   };
 
   constructor(private basePath: string) {
+    super();
     logger.debug(\`Initializing ExampleTool with base path: \${basePath}\`);
   }
 
-  async execute(input: ExampleInput) {
+  // Implementation with type-safe input
+  public async execute(input: ExampleInput) {
     const { message } = input;
     
     try {
@@ -52,50 +58,54 @@ export function generateExamplePrompt(): string {
   return `import { z } from "zod";
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 import { logger } from "../../utils/logger.js";
+import { MCPPrompt, PromptArgumentSchema } from "mcp-framework";
 
+// Define input type
 interface ExamplePromptInput {
   query: string;
 }
 
-class ExamplePrompt {
+// Extend MCPPrompt with input type for type safety
+class ExamplePrompt extends MCPPrompt<ExamplePromptInput> {
   name = "example_prompt";
   description = "An example prompt that generates responses";
 
-  schema = {
+  // Schema is validated by base class
+  protected schema: PromptArgumentSchema<ExamplePromptInput> = {
     query: {
-      type: z.string(),
+      type: z.string(),  // Use z.string() directly
       description: "Query to process",
+      required: true
     }
   };
 
   constructor(private basePath: string) {
+    super();
     logger.debug(\`Initializing ExamplePrompt with base path: \${basePath}\`);
   }
 
-  async execute(input: ExamplePromptInput) {
+  // Implementation with type-safe input
+  protected async generateMessages(input: ExamplePromptInput) {
     const { query } = input;
     
     try {
       logger.debug(\`Processing query: \${query}\`);
-      return {
-        description: "Example prompt response",
-        messages: [
-          {
-            role: "system",
-            content: {
-              type: "text",
-              text: "You are a helpful assistant."
-            }
-          },
-          {
-            role: "user",
-            content: {
-              type: "text",
-              text: query
-            }
+      return [
+        {
+          role: "system",
+          content: {
+            type: "text",
+            text: "You are a helpful assistant."
           }
-        ]
-      };
+        },
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: query
+          }
+        }
+      ];
     } catch (error: any) {
       logger.error(\`ExamplePrompt execution failed: \${error.message}\`);
       throw new McpError(
@@ -110,46 +120,29 @@ export default ExamplePrompt;`;
 }
 
 export function generateExampleResource(): string {
-  return `import { z } from "zod";
-import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
+  return `import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 import { promises as fs } from 'fs';
 import path from 'path';
 import { logger } from "../../utils/logger.js";
+import { MCPResource } from "mcp-framework";
 
-// Resource types from MCP SDK
-interface Resource {
-  uri: string;
-  name: string;
-  description?: string;
-  mimeType?: string;
-}
-
-interface ResourceContent {
-  uri: string;
-  mimeType?: string;
-  text?: string;
-  blob?: string;
-}
-
-class ExampleResource {
+// Extend MCPResource for type safety and protocol compliance
+class ExampleResource extends MCPResource {
   name = "example";
   description = "An example resource provider";
-  uriTemplate = "example://{path}";
+  uri = "example://";  // Base URI for this resource
   private resourceDir: string;
 
   constructor(private basePath: string) {
+    super();
     logger.debug(\`Initializing ExampleResource with base path: \${basePath}\`);
-    // Create a resources directory inside the base path
     this.resourceDir = path.join(basePath, 'resources');
     this.initializeResourceDir();
   }
 
   private async initializeResourceDir() {
     try {
-      // Create resources directory if it doesn't exist
       await fs.mkdir(this.resourceDir, { recursive: true });
-      
-      // Create a sample file if no files exist
       const files = await fs.readdir(this.resourceDir);
       if (files.length === 0) {
         const sampleContent = "This is a sample resource file.\\nYou can add more files to the resources directory.";
@@ -185,30 +178,18 @@ class ExampleResource {
            mimeType === 'application/typescript';
   }
 
-  async list(): Promise<Resource[]> {
+  async list() {
     try {
       logger.debug('Listing example resources');
-      
       const files = await fs.readdir(this.resourceDir);
-      const resources: Resource[] = [];
-
-      for (const file of files) {
-        const stats = await fs.stat(path.join(this.resourceDir, file));
-        if (stats.isFile()) {
-          const mimeType = this.getMimeType(file);
-          resources.push({
-            uri: \`example://\${file}\`,
-            name: file,
-            description: \`\${stats.size} bytes, modified \${stats.mtime.toISOString()}\`,
-            mimeType
-          });
-        }
-      }
-
-      logger.debug(\`Found \${resources.length} resources\`);
-      return resources;
+      return files.map(file => ({
+        uri: \`\${this.uri}\${file}\`,
+        name: file,
+        description: \`Example resource file: \${file}\`,
+        mimeType: this.getMimeType(file)
+      }));
     } catch (error: any) {
-      logger.error(\`Failed to list example resources: \${error.message}\`);
+      logger.error(\`Failed to list resources: \${error.message}\`);
       throw new McpError(
         ErrorCode.InternalError,
         \`Failed to list resources: \${error.message}\`
@@ -216,42 +197,41 @@ class ExampleResource {
     }
   }
 
-  async read(uri: string): Promise<ResourceContent> {
+  async read() {
     try {
-      logger.debug(\`Reading example resource: \${uri}\`);
-      
-      // Extract filename from URI
-      const filename = uri.replace('example://', '');
-      const filePath = path.join(this.resourceDir, filename);
-      
-      // Check if file exists
-      await fs.access(filePath);
-      
-      const mimeType = this.getMimeType(filename);
-      const isText = this.isTextFile(mimeType);
+      logger.debug('Reading example resources');
+      const files = await fs.readdir(this.resourceDir);
+      const contents = [];
 
-      if (isText) {
-        // Read as text
-        const content = await fs.readFile(filePath, 'utf-8');
-        return {
-          uri,
-          mimeType,
-          text: content
-        };
-      } else {
-        // Read as binary
-        const content = await fs.readFile(filePath);
-        return {
-          uri,
-          mimeType,
-          blob: content.toString('base64')
-        };
+      for (const file of files) {
+        const filePath = path.join(this.resourceDir, file);
+        const mimeType = this.getMimeType(file);
+        const isText = this.isTextFile(mimeType);
+        const uri = \`\${this.uri}\${file}\`;
+
+        if (isText) {
+          const content = await fs.readFile(filePath, 'utf-8');
+          contents.push({
+            uri,
+            mimeType,
+            text: content
+          });
+        } else {
+          const content = await fs.readFile(filePath);
+          contents.push({
+            uri,
+            mimeType,
+            blob: content.toString('base64')
+          });
+        }
       }
+
+      return contents;
     } catch (error: any) {
-      logger.error(\`Failed to read example resource: \${error.message}\`);
+      logger.error(\`Failed to read resources: \${error.message}\`);
       throw new McpError(
         ErrorCode.InternalError,
-        \`Failed to read resource: \${error.message}\`
+        \`Failed to read resources: \${error.message}\`
       );
     }
   }

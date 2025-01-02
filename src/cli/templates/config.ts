@@ -15,11 +15,15 @@ export function generatePackageJson(projectName: string): string {
     },
     dependencies: {
       "@modelcontextprotocol/sdk": "^0.6.1",
+      "mcp-framework": "file:../"
+    },
+    peerDependencies: {
       "zod": "^3.22.4"
     },
     devDependencies: {
       "@types/node": "^20.11.24",
-      "typescript": "^5.3.3"
+      "typescript": "^5.3.3",
+      "zod": "^3.22.4"
     }
   };
 
@@ -73,6 +77,7 @@ import os from 'os';
 
 import { logger } from "./utils/logger.js";
 import { ComponentLoader } from "./utils/componentLoader.js";
+import { MCPTool, MCPPrompt, MCPResource } from "mcp-framework";
 
 // Utility to expand home directory
 function expandHome(filepath: string): string {
@@ -82,33 +87,11 @@ function expandHome(filepath: string): string {
   return filepath;
 }
 
-// Component validation types
-interface Tool {
-  name: string;
-  description: string;
-  schema: any;
-  execute(input: any): Promise<any>;
-}
-
-interface Prompt {
-  name: string;
-  description: string;
-  schema: any;
-  execute(input: any): Promise<any>;
-}
-
-interface Resource {
-  name: string;
-  description: string;
-  list(): Promise<any[]>;
-  read(uri: string): Promise<any>;
-}
-
 class ${projectName}Server {
   private server: Server;
-  private tools: Map<string, Tool> = new Map();
-  private prompts: Map<string, Prompt> = new Map();
-  private resources: Map<string, Resource> = new Map();
+  private tools: Map<string, MCPTool> = new Map();
+  private prompts: Map<string, MCPPrompt> = new Map();
+  private resources: Map<string, MCPResource> = new Map();
 
   constructor(private basePath: string) {
     // Validate and set up base path
@@ -155,41 +138,40 @@ class ${projectName}Server {
 
   private async loadComponents() {
     // Initialize loaders
-    const toolLoader = new ComponentLoader<Tool>(
+    const toolLoader = new ComponentLoader<MCPTool>(
       this.basePath,
       "tools",
-      (component): component is Tool =>
+      (component): component is MCPTool =>
         Boolean(
           component &&
           typeof component.name === "string" &&
           typeof component.description === "string" &&
-          component.schema &&
-          typeof component.execute === "function"
+          component.inputSchema &&
+          typeof component.toolCall === "function"
         )
     );
 
-    const promptLoader = new ComponentLoader<Prompt>(
+    const promptLoader = new ComponentLoader<MCPPrompt>(
       this.basePath,
       "prompts",
-      (component): component is Prompt =>
+      (component): component is MCPPrompt =>
         Boolean(
           component &&
           typeof component.name === "string" &&
           typeof component.description === "string" &&
-          component.schema &&
-          typeof component.execute === "function"
+          component.promptDefinition &&
+          typeof component.getMessages === "function"
         )
     );
 
-    const resourceLoader = new ComponentLoader<Resource>(
+    const resourceLoader = new ComponentLoader<MCPResource>(
       this.basePath,
       "resources",
-      (component): component is Resource =>
+      (component): component is MCPResource =>
         Boolean(
           component &&
           typeof component.name === "string" &&
           typeof component.description === "string" &&
-          typeof component.list === "function" &&
           typeof component.read === "function"
         )
     );
@@ -214,7 +196,7 @@ class ${projectName}Server {
       tools: Array.from(this.tools.values()).map(tool => ({
         name: tool.name,
         description: tool.description,
-        inputSchema: tool.schema
+        inputSchema: tool.inputSchema
       }))
     }));
 
@@ -228,7 +210,7 @@ class ${projectName}Server {
       }
 
       try {
-        return await tool.execute(args);
+        return await tool.toolCall(request);
       } catch (error: any) {
         if (error instanceof McpError) {
           throw error;
@@ -245,7 +227,7 @@ class ${projectName}Server {
       prompts: Array.from(this.prompts.values()).map(prompt => ({
         name: prompt.name,
         description: prompt.description,
-        inputSchema: prompt.schema
+        inputSchema: prompt.promptDefinition
       }))
     }));
 
@@ -259,7 +241,9 @@ class ${projectName}Server {
       }
 
       try {
-        return await prompt.execute(args);
+        return {
+          messages: await prompt.getMessages(args)
+        };
       } catch (error: any) {
         if (error instanceof McpError) {
           throw error;
@@ -275,7 +259,7 @@ class ${projectName}Server {
     this.server.setRequestHandler(ListResourcesRequestSchema, async () => {
       const allResources = [];
       for (const resource of this.resources.values()) {
-        const resources = await resource.list();
+        const resources = await resource.read();
         allResources.push(...resources);
       }
       return { resources: allResources };
@@ -296,7 +280,11 @@ class ${projectName}Server {
       }
 
       try {
-        const content = await resource.read(uri);
+        const contents = await resource.read();
+        const content = contents.find(c => c.uri === uri);
+        if (!content) {
+          throw new McpError(ErrorCode.InvalidParams, \`Resource not found: \${uri}\`);
+        }
         return { contents: [content] };
       } catch (error: any) {
         if (error instanceof McpError) {

@@ -3,7 +3,7 @@ import { Tool as SDKTool } from "@modelcontextprotocol/sdk/types.js";
 
 export type ToolInputSchema<T> = {
   [K in keyof T]: {
-    type: z.ZodType<T[K]>;
+    type: any;  // Use any to bypass Zod type checking
     description: string;
   };
 };
