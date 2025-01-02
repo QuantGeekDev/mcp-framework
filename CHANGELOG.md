@@ -17,10 +17,17 @@
 - Added detailed post-creation instructions for tools, prompts, and resources
 - Added proper validation for MCP project structure
 - Added proper capabilities declaration for tools, prompts, and resources
-- Added optional utilities:
-  - Logger system for detailed server logging
-  - Component auto-discovery and validation
-  - Base classes and type definitions for easier implementation
+- Added improved component auto-discovery:
+  - Automatic loading of tools, prompts, and resources
+  - Proper path handling for compiled code
+  - Validation of component interfaces
+- Added robust logging system:
+  - File-based logging with timestamps
+  - Error-resilient log file handling
+  - Console mirroring for debugging
+  - Automatic logs directory creation
+  - Proper .gitignore configuration for logs
+- Added example resource implementation with file system support
 
 ### Changed
 - Updated create project template to use official SDK patterns
@@ -31,10 +38,11 @@
 - Improved project validation with specific error messages
 - Enhanced component creation with proper TypeScript interfaces
 - Improved error handling in tool, prompt, and resource implementations
-- Reorganized framework structure:
-  - Moved MCPServer to official SDK implementation
-  - Relocated component loaders to optional utilities
-  - Moved base classes to helper utilities
+- Enhanced project creation:
+  - Added utils directory with logger and component loader
+  - Improved example components with proper typing
+  - Added automatic component registration
+  - Added logs directory creation by default
 
 ### Fixed
 - Fixed issue where mcp create command fails without manual npm install
@@ -43,11 +51,15 @@
 - Improved project template stability by using official SDK patterns
 - Fixed resource handling to properly use Resource and ResourceContents types
 - Fixed prompt template to follow MCP protocol specifications
+- Fixed component loading in compiled code
+- Fixed logger initialization errors
+- Fixed missing logs directory in new projects
 
 ### Removed
 - Removed git initialization from project creation (non-essential)
 - Removed custom MCPServer class usage from templates
 - Removed mcp-build script dependency
+- Removed manual component registration requirement
 
 ### Migration Guide
 For existing projects created with older versions:
@@ -115,17 +127,15 @@ class ExampleResource {
 }
 ```
 
-6. Optional: Use framework utilities
+6. Add logger and component loader:
 ```typescript
-// Logger
-import { logger } from "@mcp-framework/utils/logger";
-logger.info("Server starting...");
+// Add utils/logger.ts and utils/componentLoader.ts from new project template
+// Update server to use auto-loading:
+const toolLoader = new ComponentLoader<Tool>(basePath, "tools", validateTool);
+const tools = await toolLoader.loadComponents();
+```
 
-// Component auto-discovery
-import { ToolLoader } from "@mcp-framework/utils/loaders";
-const toolLoader = new ToolLoader(basePath);
-const tools = await toolLoader.loadTools();
-
-// Base classes
-import { MCPTool, MCPResource } from "@mcp-framework/utils/base";
-class MyTool extends MCPTool { ... }
+7. Create logs directory:
+```bash
+mkdir logs
+echo "logs/*.log" >> .gitignore

@@ -46,6 +46,7 @@ export async function addTool(name?: string) {
 
     const toolContent = `import { z } from "zod";
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
+import { logger } from "../../utils/logger.js";
 
 interface ${className}Input {
   // Define your tool's input parameters here
@@ -63,12 +64,16 @@ class ${className}Tool {
     }
   };
 
-  constructor(private basePath: string) {}
+  constructor(private basePath: string) {
+    logger.debug(\`Initializing ${className}Tool with base path: \${basePath}\`);
+  }
 
   async execute(input: ${className}Input) {
     const { param } = input;
     
     try {
+      logger.debug(\`Executing ${className}Tool with param: \${param}\`);
+      
       // Implement your tool logic here
       return {
         content: [
@@ -79,6 +84,7 @@ class ${className}Tool {
         ]
       };
     } catch (error: any) {
+      logger.error(\`${className}Tool execution failed: \${error.message}\`);
       throw new McpError(
         ErrorCode.InternalError,
         \`Tool execution failed: \${error.message}\`
@@ -96,13 +102,11 @@ export default ${className}Tool;`;
     );
 
     console.log(`
-Don't forget to:
-1. Register your tool in src/index.ts:
-   const ${toolName} = new ${className}Tool(this.basePath);
-   this.tools.set(${toolName}.name, ${toolName});
-
-2. Import the tool in src/index.ts:
-   import ${className}Tool from "./tools/${toolName}/index.js";
+Tool will be automatically discovered and loaded by the server.
+You can now:
+1. Implement your tool logic in the execute method
+2. Add any necessary input parameters to ${className}Input
+3. Update the schema and description as needed
     `);
   } catch (error) {
     console.error("Error creating tool:", error);

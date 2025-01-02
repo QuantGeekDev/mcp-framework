@@ -46,10 +46,11 @@ export async function addPrompt(name?: string) {
 
     const promptContent = `import { z } from "zod";
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
+import { logger } from "../../utils/logger.js";
 
 interface ${className}Input {
   // Define your prompt's input parameters here
-  param: string;
+  query: string;
 }
 
 class ${className}Prompt {
@@ -57,28 +58,44 @@ class ${className}Prompt {
   description = "${className} prompt description";
 
   schema = {
-    param: {
+    query: {
       type: z.string(),
-      description: "Parameter description",
+      description: "Query to process",
     }
   };
 
-  constructor(private basePath: string) {}
+  constructor(private basePath: string) {
+    logger.debug(\`Initializing ${className}Prompt with base path: \${basePath}\`);
+  }
 
   async execute(input: ${className}Input) {
-    const { param } = input;
+    const { query } = input;
     
     try {
+      logger.debug(\`Executing ${className}Prompt with query: \${query}\`);
+
       // Implement your prompt logic here
       return {
-        content: [
+        description: "${className} prompt response",
+        messages: [
           {
-            type: "text",
-            text: \`${className} processed: \${param}\`
+            role: "system",
+            content: {
+              type: "text",
+              text: "You are a helpful assistant."
+            }
+          },
+          {
+            role: "user",
+            content: {
+              type: "text",
+              text: query
+            }
           }
         ]
       };
     } catch (error: any) {
+      logger.error(\`${className}Prompt execution failed: \${error.message}\`);
       throw new McpError(
         ErrorCode.InternalError,
         \`Prompt execution failed: \${error.message}\`
@@ -96,13 +113,12 @@ export default ${className}Prompt;`;
     );
 
     console.log(`
-Don't forget to:
-1. Register your prompt in src/index.ts:
-   const ${promptName} = new ${className}Prompt(this.basePath);
-   this.prompts.set(${promptName}.name, ${promptName});
-
-2. Import the prompt in src/index.ts:
-   import ${className}Prompt from "./prompts/${promptName}/index.js";
+Prompt will be automatically discovered and loaded by the server.
+You can now:
+1. Implement your prompt logic in the execute method
+2. Add any necessary input parameters to ${className}Input
+3. Update the schema and description as needed
+4. Customize the system message and response format
     `);
   } catch (error) {
     console.error("Error creating prompt:", error);
