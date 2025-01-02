@@ -54,52 +54,124 @@ export async function createProject(name?: string) {
       },
       files: ["dist"],
       scripts: {
-        build: "mcp-build",
-        prepare: "npm run build",
-        watch: "tsc --watch",
+        build: "tsc",
+        start: "node dist/index.js",
+        dev: "tsc --watch"
       },
       dependencies: {
-        "mcp-framework": "^0.1.8",
+        "@modelcontextprotocol/sdk": "^0.6.1"
       },
       devDependencies: {
         "@types/node": "^20.11.24",
-        typescript: "^5.3.3",
-      },
+        "typescript": "^5.3.3"
+      }
     };
 
     const tsconfig = {
       compilerOptions: {
-        target: "ESNext",
-        module: "ESNext",
+        target: "ES2020",
+        module: "ES2020",
         moduleResolution: "node",
         outDir: "./dist",
         rootDir: "./src",
         strict: true,
         esModuleInterop: true,
         skipLibCheck: true,
-        forceConsistentCasingInFileNames: true,
+        declaration: true
       },
       include: ["src/**/*"],
-      exclude: ["node_modules"],
+      exclude: ["node_modules", "dist"]
     };
 
-    const indexTs = `import { MCPServer } from "mcp-framework";
+    const indexTs = `#!/usr/bin/env node
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+  McpError,
+  ErrorCode
+} from "@modelcontextprotocol/sdk/types.js";
 
-const server = new MCPServer();
+// Import tools
+import ExampleTool from "./tools/ExampleTool.js";
 
-server.start().catch((error) => {
-  console.error("Server error:", error);
-  process.exit(1);
-});`;
+const server = new Server(
+  {
+    name: "${projectName}",
+    version: "0.0.1",
+  },
+  {
+    capabilities: {
+      tools: {}
+    }
+  }
+);
 
-    const exampleToolTs = `import { MCPTool } from "mcp-framework";
-import { z } from "zod";
+// Initialize tools
+const tools = [
+  new ExampleTool()
+];
+
+// Set up tool handlers
+server.setRequestHandler(ListToolsRequestSchema, async () => ({
+  tools: tools.map(tool => ({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.schema
+  }))
+}));
+
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const tool = tools.find(t => t.name === request.params.name);
+  if (!tool) {
+    throw new Error(\`Tool \${request.params.name} not found\`);
+  }
+
+  try {
+    const result = await tool.execute(request.params.arguments as any);
+    return {
+      content: [
+        {
+          type: "text",
+          text: result
+        }
+      ]
+    };
+  } catch (error: any) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: \`Error executing tool: \${error.message}\`
+        }
+      ],
+      isError: true
+    };
+  }
+});
+
+// Error handling
+server.onerror = (error) => console.error('[MCP Error]', error);
+
+// Handle shutdown
+process.on('SIGINT', async () => {
+  await server.close();
+  process.exit(0);
+});
+
+// Start server
+const transport = new StdioServerTransport();
+await server.connect(transport);
+console.error("${projectName} MCP Server running on stdio");`;
+
+    const exampleToolTs = `import { z } from "zod";
 
 interface ExampleInput {
   message: string;
 }
 
-class ExampleTool extends MCPTool<ExampleInput> {
+class ExampleTool {
   name = "example_tool";
   description = "An example tool that processes messages";
 
@@ -107,7 +179,7 @@ class ExampleTool extends MCPTool<ExampleInput> {
     message: {
       type: z.string(),
       description: "Message to process",
-    },
+    }
   };
 
   async execute(input: ExampleInput) {
@@ -131,17 +203,6 @@ export default ExampleTool;`;
       writeFile(join(srcDir, "index.ts"), indexTs),
       writeFile(join(toolsDir, "ExampleTool.ts"), exampleToolTs),
     ]);
-
-    console.log("Initializing git repository...");
-    const gitInit = spawnSync("git", ["init"], {
-      cwd: projectDir,
-      stdio: "inherit",
-      shell: true,
-    });
-
-    if (gitInit.status !== 0) {
-      throw new Error("Failed to initialize git repository");
-    }
 
     console.log("Installing dependencies...");
     const npmInstall = spawnSync("npm", ["install"], {
