@@ -1,14 +1,16 @@
-import { writeFile, mkdir } from "fs/promises";
+import { spawnSync } from "child_process";
+import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 import prompts from "prompts";
-import { toPascalCase } from "../utils/string-utils.js";
 import { validateMCPProject } from "../utils/validate-project.js";
+import { toPascalCase } from "../utils/string-utils.js";
 
 export async function addPrompt(name?: string) {
   await validateMCPProject();
 
-  let promptName = name;
-  if (!promptName) {
+  let promptName: string;
+
+  if (!name) {
     const response = await prompts([
       {
         type: "text",
@@ -26,7 +28,9 @@ export async function addPrompt(name?: string) {
       process.exit(1);
     }
 
-    promptName = response.name;
+    promptName = response.name as string;
+  } else {
+    promptName = name;
   }
 
   if (!promptName) {
@@ -34,51 +38,72 @@ export async function addPrompt(name?: string) {
   }
 
   const className = toPascalCase(promptName);
-  const fileName = `${className}Prompt.ts`;
-  const promptsDir = join(process.cwd(), "src/prompts");
+  const promptDir = join(process.cwd(), "src/prompts", promptName);
 
   try {
-    await mkdir(promptsDir, { recursive: true });
+    console.log("Creating prompt directory...");
+    await mkdir(promptDir, { recursive: true });
 
-    const promptContent = `import { MCPPrompt } from "mcp-framework";
-import { z } from "zod";
+    const promptContent = `import { z } from "zod";
+import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 
 interface ${className}Input {
-  message: string;
+  // Define your prompt's input parameters here
+  param: string;
 }
 
-class ${className}Prompt extends MCPPrompt<${className}Input> {
+class ${className}Prompt {
   name = "${promptName}";
   description = "${className} prompt description";
 
   schema = {
-    message: {
+    param: {
       type: z.string(),
-      description: "Message to process",
-      required: true,
-    },
+      description: "Parameter description",
+    }
   };
 
-  async generateMessages({ message }: ${className}Input) {
-    return [
-      {
-        role: "user",
-        content: {
-          type: "text",
-          text: message,
-        },
-      },
-    ];
+  constructor(private basePath: string) {}
+
+  async execute(input: ${className}Input) {
+    const { param } = input;
+    
+    try {
+      // Implement your prompt logic here
+      return {
+        content: [
+          {
+            type: "text",
+            text: \`${className} processed: \${param}\`
+          }
+        ]
+      };
+    } catch (error: any) {
+      throw new McpError(
+        ErrorCode.InternalError,
+        \`Prompt execution failed: \${error.message}\`
+      );
+    }
   }
 }
 
 export default ${className}Prompt;`;
 
-    await writeFile(join(promptsDir, fileName), promptContent);
+    await writeFile(join(promptDir, "index.ts"), promptContent);
 
     console.log(
-      `Prompt ${promptName} created successfully at src/prompts/${fileName}`
+      `Prompt ${promptName} created successfully at src/prompts/${promptName}/index.ts`
     );
+
+    console.log(`
+Don't forget to:
+1. Register your prompt in src/index.ts:
+   const ${promptName} = new ${className}Prompt(this.basePath);
+   this.prompts.set(${promptName}.name, ${promptName});
+
+2. Import the prompt in src/index.ts:
+   import ${className}Prompt from "./prompts/${promptName}/index.js";
+    `);
   } catch (error) {
     console.error("Error creating prompt:", error);
     process.exit(1);
