@@ -1,6 +1,6 @@
 {
   "name": "mcp-framework",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Framework for building MCP servers",
   "type": "module",
   "main": "./dist/index.js",
