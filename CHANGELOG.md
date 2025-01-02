@@ -25,7 +25,7 @@
   - File-based logging with timestamps
   - Error-resilient log file handling
   - Console mirroring for debugging
-  - Automatic logs directory creation
+  - Automatic logs directory creation on server start
   - Proper .gitignore configuration for logs
 - Added example resource implementation with file system support
 
@@ -42,7 +42,7 @@
   - Added utils directory with logger and component loader
   - Improved example components with proper typing
   - Added automatic component registration
-  - Added logs directory creation by default
+  - Added .gitignore with proper log file patterns
 
 ### Fixed
 - Fixed issue where mcp create command fails without manual npm install
@@ -53,7 +53,6 @@
 - Fixed prompt template to follow MCP protocol specifications
 - Fixed component loading in compiled code
 - Fixed logger initialization errors
-- Fixed missing logs directory in new projects
 
 ### Removed
 - Removed git initialization from project creation (non-essential)
@@ -135,7 +134,9 @@ const toolLoader = new ComponentLoader<Tool>(basePath, "tools", validateTool);
 const tools = await toolLoader.loadComponents();
 ```
 
-7. Create logs directory:
+7. Update .gitignore for logs:
 ```bash
-mkdir logs
 echo "logs/*.log" >> .gitignore
+```
+
+Note: The logs directory will be created automatically when the server starts.
