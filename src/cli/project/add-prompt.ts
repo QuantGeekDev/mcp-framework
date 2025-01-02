@@ -1,14 +1,15 @@
-import { writeFile, mkdir } from "fs/promises";
+import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 import prompts from "prompts";
-import { toPascalCase } from "../utils/string-utils.js";
 import { validateMCPProject } from "../utils/validate-project.js";
+import { toPascalCase } from "../utils/string-utils.js";
 
 export async function addPrompt(name?: string) {
   await validateMCPProject();
 
-  let promptName = name;
-  if (!promptName) {
+  let promptName: string;
+
+  if (!name) {
     const response = await prompts([
       {
         type: "text",
@@ -26,7 +27,9 @@ export async function addPrompt(name?: string) {
       process.exit(1);
     }
 
-    promptName = response.name;
+    promptName = response.name as string;
+  } else {
+    promptName = name;
   }
 
   if (!promptName) {
@@ -34,51 +37,99 @@ export async function addPrompt(name?: string) {
   }
 
   const className = toPascalCase(promptName);
-  const fileName = `${className}Prompt.ts`;
-  const promptsDir = join(process.cwd(), "src/prompts");
+  const promptDir = join(process.cwd(), "src/prompts", promptName);
 
   try {
-    await mkdir(promptsDir, { recursive: true });
+    console.log("Creating prompt directory...");
+    await mkdir(promptDir, { recursive: true });
 
-    const promptContent = `import { MCPPrompt } from "mcp-framework";
-import { z } from "zod";
+    const promptContent = `import { z } from "zod";
+import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
+import { logger } from "../../utils/logger.js";
+import { MCPPrompt, PromptArgumentSchema } from "mcp-framework";
 
+// Define input type
 interface ${className}Input {
-  message: string;
+  // Define your prompt's input parameters here
+  query: string;
 }
 
+// Extend MCPPrompt with input type for type safety
 class ${className}Prompt extends MCPPrompt<${className}Input> {
   name = "${promptName}";
   description = "${className} prompt description";
 
-  schema = {
-    message: {
-      type: z.string(),
-      description: "Message to process",
-      required: true,
-    },
+  // Schema is validated by base class
+  protected schema: PromptArgumentSchema<${className}Input> = {
+    query: {
+      type: z.string(),  // Use z.string() directly
+      description: "Query to process",
+      required: true
+    }
   };
 
-  async generateMessages({ message }: ${className}Input) {
-    return [
-      {
-        role: "user",
-        content: {
-          type: "text",
-          text: message,
-        },
-      },
-    ];
+  constructor(private basePath: string) {
+    super();
+    logger.debug(\`Initializing ${className}Prompt with base path: \${basePath}\`);
   }
+
+  // Implementation with type-safe input
+  protected async generateMessages(input: ${className}Input) {
+    const { query } = input;
+    
+    try {
+      logger.debug(\`Generating messages for ${className}Prompt with query: \${query}\`);
+
+      // Return array of messages
+      return [
+        {
+          role: "system",
+          content: {
+            type: "text",
+            text: "You are a helpful assistant."
+          }
+        },
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: query
+          }
+        }
+      ];
+    } catch (error: any) {
+      logger.error(\`${className}Prompt message generation failed: \${error.message}\`);
+      throw new McpError(
+        ErrorCode.InternalError,
+        \`Prompt failed: \${error.message}\`
+      );
+    }
+  }
+
 }
 
 export default ${className}Prompt;`;
 
-    await writeFile(join(promptsDir, fileName), promptContent);
+    await writeFile(join(promptDir, "index.ts"), promptContent);
 
     console.log(
-      `Prompt ${promptName} created successfully at src/prompts/${fileName}`
+      `Prompt ${promptName} created successfully at src/prompts/${promptName}/index.ts`
     );
+
+    console.log(`
+Prompt will be automatically discovered and loaded by the server.
+You can now:
+1. Implement your message generation logic
+2. Add any necessary input parameters to ${className}Input
+3. Update the schema and description as needed
+4. Customize the system message and response format
+
+The prompt extends MCPPrompt which provides:
+- Type-safe input handling
+- Automatic schema validation
+- Protocol compliance
+- Error handling
+    `);
   } catch (error) {
     console.error("Error creating prompt:", error);
     process.exit(1);

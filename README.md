@@ -29,7 +29,15 @@ mcp create my-mcp-server
 # Navigate to your project
 cd my-mcp-server
 
+# Install dependencies
+npm install
+
+# Build the server
+npm run build
+
 # Your server is ready to use!
+# Note: When running the server directly, you must provide the base path:
+# node dist/index.js .
 ```
 
 ### Manual Installation
@@ -87,42 +95,78 @@ mcp add resource market-data
    mcp add tool report-generator
    ```
 
-3. Build:
+3. Build and Run:
 
    ```bash
+   # Build the TypeScript code
    npm run build
 
+   # Run the server (note: base path argument is required)
+   node dist/index.js .
    ```
 
 4. Add to MCP Client (Read below for Claude Desktop example)
 
-## Using with Claude Desktop
+Note: When running the server directly with node, you must always provide the base path as an argument. The base path tells the server where to look for tools, prompts, and resources. Using '.' means "current directory".
 
-### Local Development
+## Using with MCP Clients
+
+The framework is compatible with any MCP client that follows the specification. However, some clients may have limitations:
+
+### Roo Cline
+
+Add this configuration to your Roo Cline settings file:
+
+**MacOS**: `~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json`
+
+```json
+{
+  "mcpServers": {
+    "${projectName}": {
+      "command": "node",
+      "args": [
+        "/absolute/path/to/${projectName}/dist/index.js",
+        "/absolute/path/to/${projectName}"  // Base path argument
+      ],
+      "disabled": false,
+      "alwaysAllow": []
+    }
+  }
+}
+```
+
+Note:
+- Replace ${projectName} with your actual project name
+- Use absolute paths to your project directory
+- The second argument must point to your project root where src/, dist/, etc. are located
+- Set disabled to false to enable the server
+- alwaysAllow can be left as an empty array for default security settings
+
+### Claude Desktop
 
 Add this configuration to your Claude Desktop config file:
 
-**MacOS**: \`~/Library/Application Support/Claude/claude_desktop_config.json\`
-**Windows**: \`%APPDATA%/Claude/claude_desktop_config.json\`
+**MacOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows**: `%APPDATA%/Claude/claude_desktop_config.json`
 
+#### Local Development
 ```json
 {
 "mcpServers": {
 "${projectName}": {
       "command": "node",
-      "args":["/absolute/path/to/${projectName}/dist/index.js"]
+      "args":[
+        "/absolute/path/to/${projectName}/dist/index.js",
+        "/absolute/path/to/${projectName}"  // Base path argument
+      ]
 }
 }
 }
 ```
 
-### After Publishing
+Note: The second argument is the base path, which must point to your project root directory where src/, dist/, etc. are located.
 
-Add this configuration to your Claude Desktop config file:
-
-**MacOS**: \`~/Library/Application Support/Claude/claude_desktop_config.json\`
-**Windows**: \`%APPDATA%/Claude/claude_desktop_config.json\`
-
+#### After Publishing
 ```json
 {
 "mcpServers": {
@@ -133,6 +177,12 @@ Add this configuration to your Claude Desktop config file:
 }
 }
 ```
+
+### Known Client Limitations
+
+- Some MCP clients may not fully support prompt operations
+- The server view UI in certain clients may not properly display all MCP tools and resources, though they remain functional through the API
+- Always test your server with your target client to ensure compatibility
 
 ## Building and Testing
 
@@ -301,10 +351,16 @@ Each feature should be in its own file and export a default class that extends t
 - Supports text and binary content
 - Optional subscription capabilities for real-time updates
 
-## Type Safety
+## Type Safety and Schema Validation
 
-All features use Zod for runtime type validation and TypeScript for compile-time type checking. Define your input schemas using Zod types:
+The framework uses a combination of TypeScript for compile-time type checking and Zod for runtime schema validation:
 
+### Base Model Integration
+- All base models (MCPTool, MCPPrompt, MCPResource) are integrated with Zod
+- Input validation is handled automatically by the base classes
+- Type definitions are inferred from Zod schemas for perfect type safety
+
+### Schema Definition
 ```typescript
 schema = {
   parameter: {
@@ -315,8 +371,21 @@ schema = {
     type: z.number().min(1).max(100),
     description: "Number of items",
   },
+  options: {
+    type: z.object({
+      format: z.enum(["json", "text"]),
+      pretty: z.boolean().optional()
+    }),
+    description: "Output options",
+  }
 };
 ```
+
+### Benefits
+- Runtime validation ensures data matches expected format
+- TypeScript integration provides IDE support and catch errors early
+- Zod schemas serve as both validation and documentation
+- Automatic error handling with descriptive messages
 
 ## License
 

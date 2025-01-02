@@ -1,4 +1,4 @@
-import { writeFile, mkdir } from "fs/promises";
+import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 import prompts from "prompts";
 import { validateMCPProject } from "../utils/validate-project.js";
@@ -7,8 +7,9 @@ import { toPascalCase } from "../utils/string-utils.js";
 export async function addTool(name?: string) {
   await validateMCPProject();
 
-  let toolName = name;
-  if (!toolName) {
+  let toolName: string;
+
+  if (!name) {
     const response = await prompts([
       {
         type: "text",
@@ -26,7 +27,9 @@ export async function addTool(name?: string) {
       process.exit(1);
     }
 
-    toolName = response.name;
+    toolName = response.name as string;
+  } else {
+    toolName = name;
   }
 
   if (!toolName) {
@@ -34,42 +37,88 @@ export async function addTool(name?: string) {
   }
 
   const className = toPascalCase(toolName);
-  const fileName = `${className}Tool.ts`;
-  const toolsDir = join(process.cwd(), "src/tools");
+  const toolDir = join(process.cwd(), "src/tools", toolName);
 
   try {
-    await mkdir(toolsDir, { recursive: true });
+    console.log("Creating tool directory...");
+    await mkdir(toolDir, { recursive: true });
 
-    const toolContent = `import { MCPTool } from "mcp-framework";
-import { z } from "zod";
+    const toolContent = `import { z } from "zod";
+import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
+import { logger } from "../../utils/logger.js";
+import { MCPTool, ToolInputSchema } from "mcp-framework";
 
+// Define input type
 interface ${className}Input {
-  message: string;
+  // Define your tool's input parameters here
+  param: string;
 }
 
+// Extend MCPTool with input type for type safety
 class ${className}Tool extends MCPTool<${className}Input> {
   name = "${toolName}";
   description = "${className} tool description";
 
-  schema = {
-    message: {
-      type: z.string(),
-      description: "Message to process",
-    },
+  // Schema is validated by base class
+  protected schema: ToolInputSchema<${className}Input> = {
+    param: {
+      type: z.string(),  // Use z.string() directly
+      description: "Parameter description",
+    }
   };
 
-  async execute(input: ${className}Input) {
-    return \`Processed: \${input.message}\`;
+  constructor(private basePath: string) {
+    super();
+    logger.debug(\`Initializing ${className}Tool with base path: \${basePath}\`);
+  }
+
+  // Implementation with type-safe input
+  public async execute(input: ${className}Input) {
+    const { param } = input;
+    
+    try {
+      logger.debug(\`Executing ${className}Tool with param: \${param}\`);
+      
+      // Return in MCP protocol format
+      return {
+        content: [
+          {
+            type: "text",
+            text: \`${className} processed: \${param}\`
+          }
+        ]
+      };
+    } catch (error: any) {
+      logger.error(\`${className}Tool execution failed: \${error.message}\`);
+      throw new McpError(
+        ErrorCode.InternalError,
+        \`Tool execution failed: \${error.message}\`
+      );
+    }
   }
 }
 
 export default ${className}Tool;`;
 
-    await writeFile(join(toolsDir, fileName), toolContent);
+    await writeFile(join(toolDir, "index.ts"), toolContent);
 
     console.log(
-      `Tool ${toolName} created successfully at src/tools/${fileName}`
+      `Tool ${toolName} created successfully at src/tools/${toolName}/index.ts`
     );
+
+    console.log(`
+Tool will be automatically discovered and loaded by the server.
+You can now:
+1. Implement your tool logic in the execute method
+2. Add any necessary input parameters to ${className}Input
+3. Update the schema and description as needed
+
+The tool extends MCPTool which provides:
+- Type-safe input handling
+- Automatic schema validation
+- Protocol compliance
+- Error handling
+    `);
   } catch (error) {
     console.error("Error creating tool:", error);
     process.exit(1);
