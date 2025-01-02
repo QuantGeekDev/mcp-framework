@@ -28,6 +28,10 @@
   - Automatic logs directory creation on server start
   - Proper .gitignore configuration for logs
 - Added example resource implementation with file system support
+- Added modular template system:
+  - Separated templates into logical groups (utils, components, config)
+  - Added template generation functions for better maintainability
+  - Improved code organization in project creation
 
 ### Changed
 - Updated create project template to use official SDK patterns
@@ -43,6 +47,11 @@
   - Improved example components with proper typing
   - Added automatic component registration
   - Added .gitignore with proper log file patterns
+- Refactored project creation:
+  - Moved templates to separate files
+  - Added template generation functions
+  - Reduced create.ts from ~1000 to ~130 lines
+  - Improved maintainability without changing functionality
 
 ### Fixed
 - Fixed issue where mcp create command fails without manual npm install
@@ -59,6 +68,7 @@
 - Removed custom MCPServer class usage from templates
 - Removed mcp-build script dependency
 - Removed manual component registration requirement
+- Removed inline template strings from create.ts
 
 ### Migration Guide
 For existing projects created with older versions:
