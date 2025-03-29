@@ -99,13 +99,7 @@ export interface HttpStreamTransportConfig {
   /**
    * CORS configuration
    */
-  cors?: {
-    allowOrigin?: string;
-    allowMethods?: string;
-    allowHeaders?: string;
-    exposeHeaders?: string;
-    maxAge?: string;
-  };
+  cors?: CORSConfig;
   
   /**
    * Authentication configuration
@@ -158,7 +152,7 @@ export interface HttpStreamTransportConfig {
  * Internal configuration type with required fields
  */
 export type HttpStreamTransportConfigInternal = Required<Omit<HttpStreamTransportConfig, 'headers' | 'auth' | 'cors' | 'session' | 'resumability'>> & {
-  cors: Required<NonNullable<HttpStreamTransportConfig['cors']>>;
+  cors: Required<NonNullable<CORSConfig>>;
   session: Required<NonNullable<HttpStreamTransportConfig['session']>>;
   resumability: Required<NonNullable<HttpStreamTransportConfig['resumability']>>;
   headers?: Record<string, string>;

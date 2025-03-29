@@ -20,6 +20,7 @@ import { AuthResult, DEFAULT_AUTH_ERROR } from "../../auth/types.js";
 import { logger } from "../../core/Logger.js";
 import { getRequestHeader, setResponseHeaders } from "../../utils/headers.js";
 import { DEFAULT_CORS_CONFIG } from "../sse/types.js";
+import { CORSConfig } from "../sse/types.js";
 
 function isRequest(msg: JsonRpcMessage): msg is JsonRpcRequest {
   return msg && 
@@ -79,7 +80,7 @@ export class HttpStreamTransport extends AbstractTransport {
       ...config,
       session: { ...DEFAULT_HTTP_STREAM_CONFIG.session, ...config.session },
       resumability: { ...DEFAULT_HTTP_STREAM_CONFIG.resumability, ...config.resumability },
-      cors: { ...DEFAULT_CORS_CONFIG, ...(config.cors || {}) } as Required<NonNullable<HttpStreamTransportConfig['cors']>>,
+      cors: { ...DEFAULT_CORS_CONFIG, ...(config.cors || {}) } as Required<NonNullable<CORSConfig>>,
       auth: config.auth ?? DEFAULT_HTTP_STREAM_CONFIG.auth,
       headers: config.headers ?? DEFAULT_HTTP_STREAM_CONFIG.headers,
       enableGetSse: config.enableGetSse ?? DEFAULT_HTTP_STREAM_CONFIG.enableGetSse,
