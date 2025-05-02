@@ -3,29 +3,55 @@ description:
 globs: 
 alwaysApply: false
 ---
-We are in the mcp-framework , a typescript framework that allows construction of model context protocol (mcp) servers.
-We are implementing the new specification:
-<specification>Overview 
-MCP provides a standardized way for applications to:
+# MCP Framework
 
-Share contextual information with language models
-Expose tools and capabilities to AI systems
-Build composable integrations and workflows
-The protocol uses JSON-RPC 2.0 messages to establish communication between:
+MCP Framework is a TypeScript framework for building Model Context Protocol (MCP) servers that connect AI models with external tools and data.
 
-Hosts: LLM applications that initiate connections
-Clients: Connectors within the host application
-Servers: Services that provide context and capabilities
-MCP takes some inspiration from the Language Server Protocol, which standardizes how to add support for programming languages across a whole ecosystem of development tools. In a similar way, MCP standardizes how to integrate additional context and tools into the ecosystem of AI applications.
+## Project Structure
 
-Key Details 
-Base Protocol 
-JSON-RPC message format
-Stateful connections
-Server and client capability negotiation
-Features 
-Servers offer any of the following features to clients:
+- **Entry Point**: [src/index.ts](mdc:src/index.ts) - Main exports from the framework
+- **Core Server**: [src/core/MCPServer.ts](mdc:src/core/MCPServer.ts) - Central server implementation that handles MCP protocol
 
-Resources: Context and data, for the user or the AI model to use
-Prompts: Templated messages and workflows for users
-Tools: Functions for the AI model to execute</specification>
+## Key Components
+
+### Core Components
+
+- **Server**: [src/core/MCPServer.ts](mdc:src/core/MCPServer.ts) - Main server implementation
+- **Logger**: [src/core/Logger.ts](mdc:src/core/Logger.ts) - Logging functionality
+
+### Base Classes
+
+- **Tools**: [src/tools/BaseTool.ts](mdc:src/tools/BaseTool.ts) - Base class for creating tool implementations
+- **Resources**: [src/resources/BaseResource.ts](mdc:src/resources/BaseResource.ts) - Base class for resource implementations
+- **Prompts**: [src/prompts/BasePrompt.ts](mdc:src/prompts/BasePrompt.ts) - Base class for prompt implementations
+
+### Transport Layers
+
+- **Base Transport**: [src/transports/base.ts](mdc:src/transports/base.ts) - Transport interface
+- **Stdio Transport**: [src/transports/stdio/server.ts](mdc:src/transports/stdio/server.ts) - Standard I/O transport
+- **SSE Transport**: [src/transports/sse/server.ts](mdc:src/transports/sse/server.ts) - Server-Sent Events transport
+- **HTTP Stream Transport**: [src/transports/http/server.ts](mdc:src/transports/http/server.ts) - HTTP streaming transport
+
+### Loaders
+
+- **Tool Loader**: [src/loaders/toolLoader.ts](mdc:src/loaders/toolLoader.ts) - Dynamically loads tools
+- **Prompt Loader**: [src/loaders/promptLoader.ts](mdc:src/loaders/promptLoader.ts) - Dynamically loads prompts
+- **Resource Loader**: [src/loaders/resourceLoader.ts](mdc:src/loaders/resourceLoader.ts) - Dynamically loads resources
+
+### CLI
+
+- **CLI Entry**: [src/cli/index.ts](mdc:src/cli/index.ts) - Command-line interface entry point
+- **Project Creation**: [src/cli/project/createProject.ts](mdc:src/cli/project/createProject.ts) - Project scaffolding
+- **Templates**: [src/cli/templates](mdc:src/cli/templates) - Project and component templates
+
+### Authentication
+
+- **Auth Providers**: [src/auth/providers](mdc:src/auth/providers) - Authentication implementations
+
+## Development Workflow
+
+1. Create project with CLI: `mcp create my-project`
+2. Add tools/prompts/resources: `mcp add tool my-tool`
+3. Implement functionality by extending base classes
+4. Configure server with appropriate transport
+5. Build and run

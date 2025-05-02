@@ -6,3 +6,5 @@ README
 dist
 node_modules
 .cursor
+# SpecStory explanation file
+.specstory/.what-is-this.md
