@@ -1,0 +1,27 @@
+{
+    "mcpServers": {
+      "openai-agent": {
+        "command": "node",
+        "args": [
+          "dist/index.js"
+        ],
+        "env": {
+          "OPENAI_API_KEY": "YOUR_API_KEY_HERE",
+          "SUPABASE_URL": "https://your-supabase-project.supabase.co",
+          "SUPABASE_KEY": "YOUR_SUPABASE_KEY_HERE",
+          "LLM_DEBUG": "true",
+          "AGENT_LIFECYCLE": "true",
+          "TOOL_DEBUG": "true"
+        },
+        "disabled": false,
+        "autoApprove": [
+          "research",
+          "support",
+          "customer_support",
+          "database_query",
+          "handoff_to_agent",
+          "summarize"
+        ]
+      }
+    }
+  }
