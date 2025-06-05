@@ -160,6 +160,7 @@ mcp add resource market-data
    import { z } from "zod";
    
    const DataFetcherSchema = z.object({
+     // all fields should have .describe()
      url: z.string().url().describe("URL to fetch data from"),
      timeout: z.number().positive().default(5000).describe("Request timeout in milliseconds").optional()
    });
