@@ -5,3 +5,5 @@ README
 .DS_Store
 dist
 node_modules
+*.log
+coverage

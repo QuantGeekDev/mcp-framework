@@ -409,6 +409,18 @@ export class MCPServer {
       const tools = await this.toolLoader.loadTools();
       this.toolsMap = new Map(tools.map((tool: ToolProtocol) => [tool.name, tool]));
 
+      // Validate all tools
+      for (const tool of tools) {
+        if ('validate' in tool && typeof tool.validate === 'function') {
+          try {
+            (tool as any).validate();
+          } catch (error: any) {
+            logger.error(`Tool validation failed for '${tool.name}': ${error.message}`);
+            throw new Error(`Tool validation failed for '${tool.name}': ${error.message}`);
+          }
+        }
+      }
+
       const prompts = await this.promptLoader.loadPrompts();
       this.promptsMap = new Map(prompts.map((prompt: PromptProtocol) => [prompt.name, prompt]));
 

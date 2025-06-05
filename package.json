@@ -25,8 +25,11 @@
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "format": "prettier --write \"src/**/*.ts\"",
-    "prepare": "npm run build"
-    "dev:pub": "rm -rf dist && npm run build && yalc publish --push"
+    "prepare": "npm run build",
+    "dev:pub": "rm -rf dist && npm run build && yalc publish --push",
+    "test": "NODE_OPTIONS='--experimental-vm-modules' jest",
+    "test:watch": "NODE_OPTIONS='--experimental-vm-modules' jest --watch",
+    "test:coverage": "NODE_OPTIONS='--experimental-vm-modules' jest --coverage"
   },
   "engines": {
     "node": ">=18.19.0"
