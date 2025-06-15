@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.14](https://github.com/QuantGeekDev/mcp-framework/compare/mcp-framework-v0.2.13...mcp-framework-v0.2.14) (2025-06-15)
+
+
+### Features
+
+* add BaseLoader ([b725f84](https://github.com/QuantGeekDev/mcp-framework/commit/b725f844b25bf9da13018c758f0efc347fe6f91b))
+* add license ([53cfb2e](https://github.com/QuantGeekDev/mcp-framework/commit/53cfb2ebe6d5120da99b906a7f91bb7f6b74b863))
+* add license ([a88663a](https://github.com/QuantGeekDev/mcp-framework/commit/a88663a45f9cecd86e039d6fc2eca85035776c65))
+* add nested tool loading ([5fb42e6](https://github.com/QuantGeekDev/mcp-framework/commit/5fb42e683b74de3376f47343ca91548c8ffbe1a3))
+* add new tool abstraction ([b12fd17](https://github.com/QuantGeekDev/mcp-framework/commit/b12fd17a3daf5bd1299c73e229240a5e614969c5))
+* add support for nested automatic discovery ([a0c3dff](https://github.com/QuantGeekDev/mcp-framework/commit/a0c3dffb58183a71995eb739bfb5ee731a912fe3))
+* refactor SSE transport for multiple connections and add prepare script ([30fc864](https://github.com/QuantGeekDev/mcp-framework/commit/30fc8643ee74457f1bfc2cabb706a05e296b832d))
+* update gitignore ([1823548](https://github.com/QuantGeekDev/mcp-framework/commit/1823548099b75b6a0b2a6eb991134b15c0077dd6))
+
+
+### Bug Fixes
+
+* multi client ([effbb13](https://github.com/QuantGeekDev/mcp-framework/commit/effbb131ae315c97b2d96f96f945f9bd11e51cfb))
+* multi client ([4019e11](https://github.com/QuantGeekDev/mcp-framework/commit/4019e11d6c48153bb80838469cfc994a46862ba2))
+* recursive loading ([5b3208f](https://github.com/QuantGeekDev/mcp-framework/commit/5b3208f5e6471c0e937e6524d58727f870e865d8))
+* recursive loading ([a34bc6a](https://github.com/QuantGeekDev/mcp-framework/commit/a34bc6a79cd8d3c920bb8ea46359dce742acb8f7))
+* update tool loader pathing ([5151aff](https://github.com/QuantGeekDev/mcp-framework/commit/5151aff51db516f7c3673fb7d28f3b27173cb533))
+* update tool loader pathing ([f048ecd](https://github.com/QuantGeekDev/mcp-framework/commit/f048ecdad8a23c517f4786dd7f4568e2a4c84845))
+
 ## [0.2.13](https://github.com/QuantGeekDev/mcp-framework/compare/mcp-framework-v0.2.12...mcp-framework-v0.2.13) (2025-05-23)
 
 
