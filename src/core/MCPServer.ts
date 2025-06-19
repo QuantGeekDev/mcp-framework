@@ -424,6 +424,7 @@ export class MCPServer {
         { name: this.serverName, version: this.serverVersion },
         { capabilities: this.capabilities }
       );
+      tools.forEach((tool) => tool.injectServer(this.server));
       logger.debug(
         `SDK Server instance created with capabilities: ${JSON.stringify(this.capabilities)}`
       );
