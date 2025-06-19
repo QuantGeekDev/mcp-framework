@@ -1,6 +1,7 @@
 import { z } from 'zod';
-import { Tool as SDKTool } from '@modelcontextprotocol/sdk/types.js';
+import { CreateMessageRequest, CreateMessageResult, Tool as SDKTool } from '@modelcontextprotocol/sdk/types.js';
 import { ImageContent } from '../transports/utils/image-handler.js';
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 
 // Type to check if a Zod type has a description
 type HasDescription<T> = T extends { _def: { description: string } } ? T : never;
@@ -68,6 +69,7 @@ export interface ToolProtocol extends SDKTool {
   toolCall(request: {
     params: { name: string; arguments?: Record<string, unknown> };
   }): Promise<ToolResponse>;
+  injectServer(server: Server): void;
 }
 
 /**
@@ -103,6 +105,37 @@ export abstract class MCPTool<TInput extends Record<string, any> = any, TSchema 
       : z.ZodObject<any> | ToolInputSchema<TInput>;
   protected useStringify: boolean = true;
   [key: string]: unknown;
+
+  private server: Server | undefined;
+
+  /**
+   * Injects the server into this tool to allow sampling requests.
+   * Automatically called by the MCP server when registering the tool.
+   * Calling this method manually will result in an error.
+   */
+  public injectServer(server: Server): void {
+    if (this.server) {
+      throw new Error(`Server reference has already been injected into '${this.name}' tool.`);
+    }
+    this.server = server;
+  }
+
+  /**
+   * Submit a sampling request to the client
+   * @example
+   * ```typescript
+   * const result = await this.samplingRequest({
+   *   messages: [{ role: "user", content: { type: "text", text: "Hello!" } }],
+   *   maxTokens: 100
+   * });
+   * ```
+   */
+  public readonly samplingRequest = async (request: CreateMessageRequest['params']): Promise<CreateMessageResult> => {
+    if (!this.server) {
+      throw new Error(`Server reference has not been injected into '${this.name}' tool.`);
+    }
+    return await this.server.createMessage(request);
+  };
 
   /**
    * Validates the tool schema. This is called automatically when the tool is registered
