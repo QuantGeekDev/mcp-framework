@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { MCPTool } from '../../src/tools/BaseTool.js';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CreateMessageRequest, CreateMessageResult } from '@modelcontextprotocol/sdk/types.js';
+import {RequestOptions} from '@modelcontextprotocol/sdk/shared/protocol.js';
 
 // Mock the Server class
 jest.mock('@modelcontextprotocol/sdk/server/index.js', () => ({
@@ -579,7 +580,7 @@ describe('BaseTool', () => {
 
         const result = await samplingTool.samplingRequest(request);
 
-        expect(mockServer.createMessage).toHaveBeenCalledWith(request);
+        expect(mockServer.createMessage).toHaveBeenCalledWith(request, undefined);
         expect(result).toEqual(mockResult);
       });
 
@@ -623,9 +624,19 @@ describe('BaseTool', () => {
           metadata: { taskType: 'analysis' },
         };
 
-        const result = await samplingTool.samplingRequest(complexRequest);
+        const options: RequestOptions = {
+          timeout: 5000,
+          maxTotalTimeout: 10000,
+          signal: new AbortController().signal,
+          resetTimeoutOnProgress: true,
+          onprogress: (progress) => {
+            console.log('Progress:', progress);
+          },
+        }
 
-        expect(mockServer.createMessage).toHaveBeenCalledWith(complexRequest);
+        const result = await samplingTool.samplingRequest(complexRequest, options);
+
+        expect(mockServer.createMessage).toHaveBeenCalledWith(complexRequest, options);
         expect(result).toEqual(mockResult);
       });
     });

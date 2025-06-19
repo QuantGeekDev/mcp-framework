@@ -2,17 +2,7 @@ import { z } from 'zod';
 import { CreateMessageRequest, CreateMessageResult, Tool as SDKTool } from '@modelcontextprotocol/sdk/types.js';
 import { ImageContent } from '../transports/utils/image-handler.js';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-
-// Type to check if a Zod type has a description
-type HasDescription<T> = T extends { _def: { description: string } } ? T : never;
-
-// Type to ensure all properties in a Zod object have descriptions
-type AllFieldsHaveDescriptions<T extends z.ZodRawShape> = {
-  [K in keyof T]: HasDescription<T[K]>;
-};
-
-// Strict Zod object type that requires all fields to have descriptions
-type StrictZodObject<T extends z.ZodRawShape> = z.ZodObject<AllFieldsHaveDescriptions<T>>;
+import { RequestOptions } from '@modelcontextprotocol/sdk/shared/protocol.js';
 
 export type ToolInputSchema<T> = {
   [K in keyof T]: {
@@ -130,11 +120,11 @@ export abstract class MCPTool<TInput extends Record<string, any> = any, TSchema 
    * });
    * ```
    */
-  public readonly samplingRequest = async (request: CreateMessageRequest['params']): Promise<CreateMessageResult> => {
+  public readonly samplingRequest = async (request: CreateMessageRequest['params'], options?: RequestOptions): Promise<CreateMessageResult> => {
     if (!this.server) {
       throw new Error(`Server reference has not been injected into '${this.name}' tool.`);
     }
-    return await this.server.createMessage(request);
+    return await this.server.createMessage(request, options);
   };
 
   /**
