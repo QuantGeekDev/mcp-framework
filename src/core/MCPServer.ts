@@ -13,7 +13,7 @@ import {
 import { ToolProtocol } from '../tools/BaseTool.js';
 import { PromptProtocol } from '../prompts/BasePrompt.js';
 import { ResourceProtocol } from '../resources/BaseResource.js';
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import { join, resolve, dirname } from 'path';
 import { logger } from './Logger.js';
 import { ToolLoader } from '../loaders/toolLoader.js';
@@ -101,9 +101,23 @@ export class MCPServer {
     if (configPath) {
       return configPath;
     }
-    if (process.argv[1]) {
-      return dirname(process.argv[1]);
+    
+    // Try current working directory first (consistent with BaseLoader logic)
+    const projectRoot = process.cwd();
+    const distPath = join(projectRoot, 'dist');
+    if (existsSync(distPath)) {
+      logger.debug(`Using project's dist directory: ${distPath}`);
+      return distPath;
     }
+    
+    // Fallback to process.argv[1] logic with intelligent dist detection
+    if (process.argv[1]) {
+      const moduleDir = dirname(process.argv[1]);
+      const basePath = moduleDir.endsWith('dist') ? moduleDir : join(moduleDir, 'dist');
+      logger.debug(`Using module path-based resolution: ${basePath}`);
+      return basePath;
+    }
+    
     return process.cwd();
   }
 
