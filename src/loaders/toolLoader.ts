@@ -8,7 +8,7 @@ export class ToolLoader extends BaseLoader<ToolProtocol> {
       {
         subdirectory: 'tools',
         excludedFiles: ['BaseTool.js', '*.test.js', '*.spec.js'],
-        extensions: ['.js'],
+        extensions: ['.js', '.ts'],
       },
       basePath
     );
