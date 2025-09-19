@@ -1,7 +1,26 @@
 import { ResourceProtocol } from "../resources/BaseResource.js";
 import { join, dirname } from "path";
 import { promises as fs } from "fs";
+import { Effect, Either, Option } from "effect";
+import {
+  DirectoryAccessError,
+  DirectoryMissingError,
+  InvalidDefinitionError,
+  InvalidExportError,
+  ModuleImportError,
+  type LoaderIssue,
+} from "./errors.js";
 import { logger } from "../core/Logger.js";
+
+type ResourceLoaderIssue = LoaderIssue;
+
+type Stats = Awaited<ReturnType<typeof fs.stat>>;
+
+const describeCause = (cause: unknown): string =>
+  cause instanceof Error ? cause.message : String(cause);
+
+const isErrnoException = (cause: unknown): cause is NodeJS.ErrnoException =>
+  typeof cause === "object" && cause !== null && "code" in cause;
 
 export class ResourceLoader {
   private readonly RESOURCES_DIR: string;
@@ -20,21 +39,15 @@ export class ResourceLoader {
   }
 
   async hasResources(): Promise<boolean> {
-    try {
-      const stats = await fs.stat(this.RESOURCES_DIR);
-      if (!stats.isDirectory()) {
-        logger.debug("Resources path exists but is not a directory");
-        return false;
-      }
-
-      const files = await fs.readdir(this.RESOURCES_DIR);
-      const hasValidFiles = files.some((file) => this.isResourceFile(file));
-      logger.debug(`Resources directory has valid files: ${hasValidFiles}`);
-      return hasValidFiles;
-    } catch (error) {
-      logger.debug(`No resources directory found: ${(error as Error).message}`);
-      return false;
-    }
+    return Effect.runPromise(
+      Effect.tapError(this.hasResourcesEffect(), (error) =>
+        Effect.sync(() =>
+          logger.debug(
+            `Unable to inspect resources directory ${error.path}: ${describeCause(error.cause)}`
+          )
+        )
+      )
+    );
   }
 
   private isResourceFile(file: string): boolean {
@@ -72,62 +85,201 @@ export class ResourceLoader {
   }
 
   async loadResources(): Promise<ResourceProtocol[]> {
-    try {
-      logger.debug(`Attempting to load resources from: ${this.RESOURCES_DIR}`);
+    return Effect.runPromise(
+      Effect.tapError(this.loadResourcesEffect(), (error) =>
+        Effect.sync(() =>
+          logger.error(
+            `Failed to read resources directory ${error.path}: ${describeCause(error.cause)}`
+          )
+        )
+      )
+    );
+  }
 
-      let stats;
-      try {
-        stats = await fs.stat(this.RESOURCES_DIR);
-      } catch (error) {
-        logger.debug(`No resources directory found: ${(error as Error).message}`);
-        return [];
+  private hasResourcesEffect(): Effect.Effect<boolean, DirectoryAccessError> {
+    const directory = this.RESOURCES_DIR;
+    const statDirectory = this.statDirectory;
+    const readDirectory = this.readDirectory;
+    const isResourceFile = this.isResourceFile.bind(this);
+
+    return Effect.gen(function* () {
+      const statResult = yield* Effect.either(statDirectory(directory));
+
+      if (Either.isLeft(statResult)) {
+        const error = statResult.left;
+        if (error._tag === "DirectoryMissingError") {
+          yield* Effect.sync(() =>
+            logger.debug(`No resources directory found: ${directory}`)
+          );
+          return false;
+        }
+        return yield* Effect.fail(error);
       }
 
+      const stats = statResult.right;
       if (!stats.isDirectory()) {
-        logger.error(`Path is not a directory: ${this.RESOURCES_DIR}`);
+        yield* Effect.sync(() =>
+          logger.debug("Resources path exists but is not a directory")
+        );
+        return false;
+      }
+
+      const files = yield* readDirectory(directory);
+      const hasValidFiles = files.some(isResourceFile);
+
+      yield* Effect.sync(() =>
+        logger.debug(`Resources directory has valid files: ${hasValidFiles}`)
+      );
+
+      return hasValidFiles;
+    });
+  }
+
+  private loadResourcesEffect(): Effect.Effect<ResourceProtocol[], DirectoryAccessError> {
+    const directory = this.RESOURCES_DIR;
+    const statDirectory = this.statDirectory;
+    const readDirectory = this.readDirectory;
+    const loadResourceFromFile = this.loadResourceFromFile.bind(this);
+    const logResourceLoadIssue = this.logResourceLoadIssue;
+
+    return Effect.gen(function* () {
+      yield* Effect.sync(() =>
+        logger.debug(`Attempting to load resources from: ${directory}`)
+      );
+
+      const statResult = yield* Effect.either(statDirectory(directory));
+
+      if (Either.isLeft(statResult)) {
+        const error = statResult.left;
+        if (error._tag === "DirectoryMissingError") {
+          yield* Effect.sync(() =>
+            logger.debug(`No resources directory found: ${directory}`)
+          );
+          return [];
+        }
+        return yield* Effect.fail(error);
+      }
+
+      const stats = statResult.right;
+      if (!stats.isDirectory()) {
+        yield* Effect.sync(() =>
+          logger.error(`Path is not a directory: ${directory}`)
+        );
         return [];
       }
 
-      const files = await fs.readdir(this.RESOURCES_DIR);
-      logger.debug(`Found files in directory: ${files.join(", ")}`);
+      const files = yield* readDirectory(directory);
+      yield* Effect.sync(() =>
+        logger.debug(`Found files in directory: ${files.join(", ")}`)
+      );
 
       const resources: ResourceProtocol[] = [];
 
       for (const file of files) {
-        if (!this.isResourceFile(file)) {
+        const loadResult = yield* Effect.either(loadResourceFromFile(file));
+        if (Either.isLeft(loadResult)) {
+          yield* Effect.sync(() => logResourceLoadIssue(loadResult.left));
           continue;
         }
 
-        try {
-          const fullPath = join(this.RESOURCES_DIR, file);
-          logger.debug(`Attempting to load resource from: ${fullPath}`);
-
-          const importPath = `file://${fullPath}`;
-          const { default: ResourceClass } = await import(importPath);
-
-          if (!ResourceClass) {
-            logger.warn(`No default export found in ${file}`);
-            continue;
-          }
-
-          const resource = new ResourceClass();
-          if (this.validateResource(resource)) {
-            resources.push(resource);
-          }
-        } catch (error) {
-          logger.error(`Error loading resource ${file}: ${(error as Error).message}`);
+        const resourceOption = loadResult.right;
+        if (Option.isSome(resourceOption)) {
+          resources.push(resourceOption.value);
         }
       }
 
-      logger.debug(
-        `Successfully loaded ${resources.length} resources: ${resources
-          .map((r) => r.name)
-          .join(", ")}`
+      yield* Effect.sync(() =>
+        logger.debug(
+          `Successfully loaded ${resources.length} resources: ${resources
+            .map((r) => r.name)
+            .join(", ")}`
+        )
       );
+
       return resources;
-    } catch (error) {
-      logger.error(`Failed to load resources: ${(error as Error).message}`);
-      return [];
+    });
+  }
+
+  private loadResourceFromFile(file: string): Effect.Effect<Option.Option<ResourceProtocol>, ResourceLoaderIssue> {
+    if (!this.isResourceFile(file)) {
+      return Effect.succeed(Option.none<ResourceProtocol>());
+    }
+
+    const fullPath = join(this.RESOURCES_DIR, file);
+    const importModule = this.importModule;
+    const validateResource = this.validateResource.bind(this);
+
+    return Effect.gen(function* () {
+      yield* Effect.sync(() =>
+        logger.debug(`Attempting to load resource from: ${fullPath}`)
+      );
+
+      const module = yield* importModule(fullPath);
+      const ResourceClass = (module as { default?: new () => ResourceProtocol }).default;
+
+      if (!ResourceClass) {
+        return yield* Effect.fail(
+          new InvalidExportError({ path: fullPath, entityType: "resource" })
+        );
+      }
+
+      const resource = new ResourceClass();
+      if (!validateResource(resource)) {
+        return yield* Effect.fail(
+          new InvalidDefinitionError({
+            path: fullPath,
+            entityType: "resource",
+            reason: "Missing required properties",
+          })
+        );
+      }
+
+      return Option.some(resource);
+    });
+  }
+
+  private logResourceLoadIssue(issue: ResourceLoaderIssue) {
+    switch (issue._tag) {
+      case "ModuleImportError":
+        logger.error(
+          `Error loading resource at ${issue.path}: ${describeCause(issue.cause)}`
+        );
+        break;
+      case "InvalidExportError":
+        logger.warn(`No default export found for resource at ${issue.path}`);
+        break;
+      case "InvalidDefinitionError":
+        logger.warn(
+          `Invalid resource definition at ${issue.path}: ${issue.reason}`
+        );
+        break;
     }
   }
+
+  private statDirectory = (
+    path: string
+  ): Effect.Effect<Stats, DirectoryMissingError | DirectoryAccessError> =>
+    Effect.tryPromise({
+      try: () => fs.stat(path),
+      catch: (cause) =>
+        isErrnoException(cause) && cause.code === "ENOENT"
+          ? new DirectoryMissingError({ path })
+          : new DirectoryAccessError({ path, cause }),
+    });
+
+  private readDirectory = (
+    path: string
+  ): Effect.Effect<string[], DirectoryAccessError> =>
+    Effect.tryPromise({
+      try: () => fs.readdir(path),
+      catch: (cause) => new DirectoryAccessError({ path, cause }),
+    });
+
+  private importModule = (fullPath: string): Effect.Effect<unknown, ModuleImportError> => {
+    const importPath = `file://${fullPath}`;
+    return Effect.tryPromise({
+      try: () => import(importPath),
+      catch: (cause) => new ModuleImportError({ path: fullPath, cause }),
+    });
+  };
 }
