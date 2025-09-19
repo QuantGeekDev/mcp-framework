@@ -51,6 +51,7 @@
     "commander": "^12.1.0",
     "content-type": "^1.0.5",
     "dotenv": "^16.4.7",
+    "effect": "^3.17.13",
     "execa": "^9.5.2",
     "find-up": "^7.0.0",
     "jsonwebtoken": "^9.0.2",

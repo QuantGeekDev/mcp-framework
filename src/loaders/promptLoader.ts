@@ -1,7 +1,26 @@
 import { PromptProtocol } from "../prompts/BasePrompt.js";
 import { join, dirname } from "path";
 import { promises as fs } from "fs";
+import { Effect, Either, Option } from "effect";
+import {
+  DirectoryAccessError,
+  DirectoryMissingError,
+  InvalidDefinitionError,
+  InvalidExportError,
+  ModuleImportError,
+  type LoaderIssue,
+} from "./errors.js";
 import { logger } from "../core/Logger.js";
+
+type PromptLoaderIssue = LoaderIssue;
+
+type Stats = Awaited<ReturnType<typeof fs.stat>>;
+
+const describeCause = (cause: unknown): string =>
+  cause instanceof Error ? cause.message : String(cause);
+
+const isErrnoException = (cause: unknown): cause is NodeJS.ErrnoException =>
+  typeof cause === "object" && cause !== null && "code" in cause;
 
 export class PromptLoader {
   private readonly PROMPTS_DIR: string;
@@ -16,21 +35,15 @@ export class PromptLoader {
   }
 
   async hasPrompts(): Promise<boolean> {
-    try {
-      const stats = await fs.stat(this.PROMPTS_DIR);
-      if (!stats.isDirectory()) {
-        logger.debug("Prompts path exists but is not a directory");
-        return false;
-      }
-
-      const files = await fs.readdir(this.PROMPTS_DIR);
-      const hasValidFiles = files.some((file) => this.isPromptFile(file));
-      logger.debug(`Prompts directory has valid files: ${hasValidFiles}`);
-      return hasValidFiles;
-    } catch (error) {
-      logger.debug(`No prompts directory found: ${(error as Error).message}`);
-      return false;
-    }
+    return Effect.runPromise(
+      Effect.tapError(this.hasPromptsEffect(), (error) =>
+        Effect.sync(() =>
+          logger.debug(
+            `Unable to inspect prompts directory ${error.path}: ${describeCause(error.cause)}`
+          )
+        )
+      )
+    );
   }
 
   private isPromptFile(file: string): boolean {
@@ -67,62 +80,201 @@ export class PromptLoader {
   }
 
   async loadPrompts(): Promise<PromptProtocol[]> {
-    try {
-      logger.debug(`Attempting to load prompts from: ${this.PROMPTS_DIR}`);
+    return Effect.runPromise(
+      Effect.tapError(this.loadPromptsEffect(), (error) =>
+        Effect.sync(() =>
+          logger.error(
+            `Failed to read prompts directory ${error.path}: ${describeCause(error.cause)}`
+          )
+        )
+      )
+    );
+  }
 
-      let stats;
-      try {
-        stats = await fs.stat(this.PROMPTS_DIR);
-      } catch (error) {
-        logger.debug(`No prompts directory found: ${(error as Error).message}`);
-        return [];
+  private hasPromptsEffect(): Effect.Effect<boolean, DirectoryAccessError> {
+    const directory = this.PROMPTS_DIR;
+    const statDirectory = this.statDirectory;
+    const readDirectory = this.readDirectory;
+    const isPromptFile = this.isPromptFile.bind(this);
+
+    return Effect.gen(function* () {
+      const statResult = yield* Effect.either(statDirectory(directory));
+
+      if (Either.isLeft(statResult)) {
+        const error = statResult.left;
+        if (error._tag === "DirectoryMissingError") {
+          yield* Effect.sync(() =>
+            logger.debug(`No prompts directory found: ${directory}`)
+          );
+          return false;
+        }
+        return yield* Effect.fail(error);
       }
 
+      const stats = statResult.right;
       if (!stats.isDirectory()) {
-        logger.error(`Path is not a directory: ${this.PROMPTS_DIR}`);
+        yield* Effect.sync(() =>
+          logger.debug("Prompts path exists but is not a directory")
+        );
+        return false;
+      }
+
+      const files = yield* readDirectory(directory);
+      const hasValidFiles = files.some(isPromptFile);
+
+      yield* Effect.sync(() =>
+        logger.debug(`Prompts directory has valid files: ${hasValidFiles}`)
+      );
+
+      return hasValidFiles;
+    });
+  }
+
+  private loadPromptsEffect(): Effect.Effect<PromptProtocol[], DirectoryAccessError> {
+    const directory = this.PROMPTS_DIR;
+    const statDirectory = this.statDirectory;
+    const readDirectory = this.readDirectory;
+    const loadPromptFromFile = this.loadPromptFromFile.bind(this);
+    const logPromptLoadIssue = this.logPromptLoadIssue;
+
+    return Effect.gen(function* () {
+      yield* Effect.sync(() =>
+        logger.debug(`Attempting to load prompts from: ${directory}`)
+      );
+
+      const statResult = yield* Effect.either(statDirectory(directory));
+
+      if (Either.isLeft(statResult)) {
+        const error = statResult.left;
+        if (error._tag === "DirectoryMissingError") {
+          yield* Effect.sync(() =>
+            logger.debug(`No prompts directory found: ${directory}`)
+          );
+          return [];
+        }
+        return yield* Effect.fail(error);
+      }
+
+      const stats = statResult.right;
+      if (!stats.isDirectory()) {
+        yield* Effect.sync(() =>
+          logger.error(`Path is not a directory: ${directory}`)
+        );
         return [];
       }
 
-      const files = await fs.readdir(this.PROMPTS_DIR);
-      logger.debug(`Found files in directory: ${files.join(", ")}`);
+      const files = yield* readDirectory(directory);
+      yield* Effect.sync(() =>
+        logger.debug(`Found files in directory: ${files.join(", ")}`)
+      );
 
       const prompts: PromptProtocol[] = [];
 
       for (const file of files) {
-        if (!this.isPromptFile(file)) {
+        const loadResult = yield* Effect.either(loadPromptFromFile(file));
+        if (Either.isLeft(loadResult)) {
+          yield* Effect.sync(() => logPromptLoadIssue(loadResult.left));
           continue;
         }
 
-        try {
-          const fullPath = join(this.PROMPTS_DIR, file);
-          logger.debug(`Attempting to load prompt from: ${fullPath}`);
-
-          const importPath = `file://${fullPath}`;
-          const { default: PromptClass } = await import(importPath);
-
-          if (!PromptClass) {
-            logger.warn(`No default export found in ${file}`);
-            continue;
-          }
-
-          const prompt = new PromptClass();
-          if (this.validatePrompt(prompt)) {
-            prompts.push(prompt);
-          }
-        } catch (error) {
-          logger.error(`Error loading prompt ${file}: ${(error as Error).message}`);
+        const promptOption = loadResult.right;
+        if (Option.isSome(promptOption)) {
+          prompts.push(promptOption.value);
         }
       }
 
-      logger.debug(
-        `Successfully loaded ${prompts.length} prompts: ${prompts
-          .map((p) => p.name)
-          .join(", ")}`
+      yield* Effect.sync(() =>
+        logger.debug(
+          `Successfully loaded ${prompts.length} prompts: ${prompts
+            .map((p) => p.name)
+            .join(", ")}`
+        )
       );
+
       return prompts;
-    } catch (error) {
-      logger.error(`Failed to load prompts: ${(error as Error).message}`);
-      return [];
+    });
+  }
+
+  private loadPromptFromFile(file: string): Effect.Effect<Option.Option<PromptProtocol>, PromptLoaderIssue> {
+    if (!this.isPromptFile(file)) {
+      return Effect.succeed(Option.none<PromptProtocol>());
+    }
+
+    const fullPath = join(this.PROMPTS_DIR, file);
+    const importModule = this.importModule;
+    const validatePrompt = this.validatePrompt.bind(this);
+
+    return Effect.gen(function* () {
+      yield* Effect.sync(() =>
+        logger.debug(`Attempting to load prompt from: ${fullPath}`)
+      );
+
+      const module = yield* importModule(fullPath);
+      const PromptClass = (module as { default?: new () => PromptProtocol }).default;
+
+      if (!PromptClass) {
+        return yield* Effect.fail(
+          new InvalidExportError({ path: fullPath, entityType: "prompt" })
+        );
+      }
+
+      const prompt = new PromptClass();
+      if (!validatePrompt(prompt)) {
+        return yield* Effect.fail(
+          new InvalidDefinitionError({
+            path: fullPath,
+            entityType: "prompt",
+            reason: "Missing required properties",
+          })
+        );
+      }
+
+      return Option.some(prompt);
+    });
+  }
+
+  private logPromptLoadIssue(issue: PromptLoaderIssue) {
+    switch (issue._tag) {
+      case "ModuleImportError":
+        logger.error(
+          `Error loading prompt at ${issue.path}: ${describeCause(issue.cause)}`
+        );
+        break;
+      case "InvalidExportError":
+        logger.warn(`No default export found for prompt at ${issue.path}`);
+        break;
+      case "InvalidDefinitionError":
+        logger.warn(
+          `Invalid prompt definition at ${issue.path}: ${issue.reason}`
+        );
+        break;
     }
   }
+
+  private statDirectory = (
+    path: string
+  ): Effect.Effect<Stats, DirectoryMissingError | DirectoryAccessError> =>
+    Effect.tryPromise({
+      try: () => fs.stat(path),
+      catch: (cause) =>
+        isErrnoException(cause) && cause.code === "ENOENT"
+          ? new DirectoryMissingError({ path })
+          : new DirectoryAccessError({ path, cause }),
+    });
+
+  private readDirectory = (
+    path: string
+  ): Effect.Effect<string[], DirectoryAccessError> =>
+    Effect.tryPromise({
+      try: () => fs.readdir(path),
+      catch: (cause) => new DirectoryAccessError({ path, cause }),
+    });
+
+  private importModule = (fullPath: string): Effect.Effect<unknown, ModuleImportError> => {
+    const importPath = `file://${fullPath}`;
+    return Effect.tryPromise({
+      try: () => import(importPath),
+      catch: (cause) => new ModuleImportError({ path: fullPath, cause }),
+    });
+  };
 }
