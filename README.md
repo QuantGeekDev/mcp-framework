@@ -563,6 +563,261 @@ const server = new MCPServer({
 - **Batch Processing**: Support for JSON-RPC batch requests/responses
 - **Comprehensive Error Handling**: Detailed error responses with JSON-RPC error codes
 
+## Prompts
+
+MCP Framework provides powerful prompt capabilities with automatic parameter handling, default values, and parameterless execution support.
+
+### Defining Prompts
+
+Prompts are defined using the `MCPPrompt` base class with Zod schemas for type safety:
+
+```typescript
+import { MCPPrompt } from "mcp-framework";
+import { z } from "zod";
+
+interface CommitPromptInput {
+  message: string;
+  watch?: boolean;
+  project_id?: string;
+}
+
+class CommitPrompt extends MCPPrompt<CommitPromptInput> {
+  name = "commit";
+  description = "Stage all changes, create a commit with an appropriate message, and push to remote repository";
+
+  protected schema = {
+    message: {
+      type: z.string(),
+      description: "Custom commit message. Leave empty to auto-generate based on changes",
+      default: "" // Enables parameterless execution
+    },
+    watch: {
+      type: z.boolean().optional(),
+      description: "Monitor the GitLab pipeline after committing and pushing",
+      required: false
+    },
+    project_id: {
+      type: z.string().optional(),
+      description: "GitLab project ID or path. Auto-detected if not provided",
+      required: false
+    }
+  };
+
+  async generateMessages(input: CommitPromptInput) {
+    const instructions = input.message || "Auto-generate commit message based on changes";
+    
+    return [{
+      role: "user",
+      content: {
+        type: "text",
+        text: `Please commit changes with message: ${instructions}`
+      }
+    }];
+  }
+}
+
+export default CommitPrompt;
+```
+
+### Parameterless Execution
+
+**New in v0.2.15+**: Prompts can now be executed without parameters by providing default values or marking parameters as optional.
+
+#### Using Default Values
+
+```typescript
+protected schema = {
+  message: {
+    type: z.string(),
+    description: "Custom message",
+    default: "Default message" // Enables parameterless execution
+  },
+  count: {
+    type: z.number(),
+    description: "Count value", 
+    default: 42
+  }
+};
+```
+
+With defaults, prompts can be called in multiple ways:
+- **Parameterless**: `/my-prompt (MCP)` - Uses all default values
+- **Empty object**: `/my-prompt (MCP) {}` - Uses all default values  
+- **Partial**: `/my-prompt (MCP) {"message": "custom"}` - Uses custom message, default count
+- **Full**: `/my-prompt (MCP) {"message": "custom", "count": 100}` - Uses all custom values
+
+#### Using Optional Parameters
+
+```typescript
+protected schema = {
+  query: {
+    type: z.string().optional(),
+    description: "Optional search query",
+    required: false
+  },
+  limit: {
+    type: z.number().optional(), 
+    description: "Optional result limit",
+    required: false
+  }
+};
+```
+
+#### Automatic Sensible Defaults
+
+For required parameters without explicit defaults, the framework automatically applies sensible defaults:
+
+- `z.string()` → `""` (empty string)
+- `z.number()` → `0`
+- `z.boolean()` → `false` 
+- `z.array()` → `[]` (empty array)
+- `z.object()` → `{}` (empty object)
+
+### Schema Types and Validation
+
+Prompts support all Zod schema features:
+
+```typescript
+protected schema = {
+  // String types with validation
+  email: {
+    type: z.string().email(),
+    description: "User email address"
+  },
+  
+  // Numbers with constraints
+  age: {
+    type: z.number().int().positive().max(120),
+    description: "User age",
+    default: 25
+  },
+  
+  // Arrays and objects
+  tags: {
+    type: z.array(z.string()),
+    description: "List of tags",
+    default: ["default"]
+  },
+  
+  // Enums and unions
+  priority: {
+    type: z.enum(['low', 'medium', 'high']),
+    description: "Task priority",
+    default: 'medium'
+  },
+  
+  // Optional parameters
+  metadata: {
+    type: z.object({
+      created: z.string().optional(),
+      updated: z.string().optional()
+    }).optional(),
+    description: "Optional metadata",
+    required: false
+  }
+};
+```
+
+### Prompt Messages
+
+The `generateMessages` method returns an array of messages that will be sent to the AI model:
+
+```typescript
+async generateMessages(input: MyPromptInput) {
+  return [
+    {
+      role: "user", 
+      content: {
+        type: "text",
+        text: `Process this request: ${input.query}`
+      }
+    },
+    {
+      role: "assistant",
+      content: {
+        type: "text", 
+        text: "I'll help you process that request."
+      }
+    },
+    {
+      role: "user",
+      content: {
+        type: "text",
+        text: "Please provide detailed analysis."
+      }
+    }
+  ];
+}
+```
+
+### Best Practices
+
+1. **Use Explicit Defaults**: For parameters that have sensible default values, always specify them explicitly:
+   ```typescript
+   message: {
+     type: z.string(),
+     description: "Commit message",
+     default: "Auto-generated commit message" // Better than relying on empty string
+   }
+   ```
+
+2. **Mark Optional Parameters**: Use `required: false` for truly optional parameters:
+   ```typescript
+   advanced_options: {
+     type: z.object({...}).optional(),
+     description: "Advanced configuration options", 
+     required: false
+   }
+   ```
+
+3. **Provide Rich Descriptions**: Help users understand what each parameter does:
+   ```typescript
+   project_id: {
+     type: z.string(),
+     description: "GitLab project ID or path (e.g., 'group/project'). Auto-detected from git remote if not provided",
+     default: ""
+   }
+   ```
+
+4. **Handle Both Cases**: Design your `generateMessages` logic to work well with both default and custom values:
+   ```typescript
+   async generateMessages(input: MyPromptInput) {
+     const message = input.message || "Please provide a default action";
+     const context = input.context || "general";
+     
+     return [{
+       role: "user",
+       content: {
+         type: "text", 
+         text: `Context: ${context}\nRequest: ${message}`
+       }
+     }];
+   }
+   ```
+
+### Migration from Previous Versions
+
+If you have existing prompts that required parameters, you can easily make them parameterless by adding defaults:
+
+```typescript
+// Before: Required parameters
+protected schema = {
+  message: {
+    type: z.string(),
+    description: "Commit message"
+  }
+};
+
+// After: Parameterless support with defaults
+protected schema = {
+  message: {
+    type: z.string(), 
+    description: "Commit message. Leave empty to auto-generate",
+    default: "" // Now supports parameterless execution
+  }
+};
+```
+
 ## Authentication
 
 MCP Framework provides optional authentication for SSE endpoints. You can choose between JWT and API Key authentication, or implement your own custom authentication provider.

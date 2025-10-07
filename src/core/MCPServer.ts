@@ -269,7 +269,7 @@ export class MCPServer {
         }
 
         return {
-          messages: await prompt.getMessages(request.params.arguments),
+          messages: await prompt.getMessages(request.params.arguments || {}),
         };
       });
     }
