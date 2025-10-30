@@ -1,0 +1,117 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+We are in the mcp-framework , a typescript framework that allows construction of model context protocol (mcp) servers.
+We are implementing the new specification:
+<specification>Overview 
+MCP provides a standardized way for applications to:
+
+Share contextual information with language models
+Expose tools and capabilities to AI systems
+Build composable integrations and workflows
+The protocol uses JSON-RPC 2.0 messages to establish communication between:
+
+Hosts: LLM applications that initiate connections
+Clients: Connectors within the host application
+Servers: Services that provide context and capabilities
+MCP takes some inspiration from the Language Server Protocol, which standardizes how to add support for programming languages across a whole ecosystem of development tools. In a similar way, MCP standardizes how to integrate additional context and tools into the ecosystem of AI applications.
+
+Key Details 
+Base Protocol 
+JSON-RPC message format
+Stateful connections
+Server and client capability negotiation
+Features 
+Servers offer any of the following features to clients:
+
+Resources: Context and data, for the user or the AI model to use
+Prompts: Templated messages and workflows for users
+Tools: Functions for the AI model to execute</specification>
+
+Here is an example of how a user creats an mcp server using mcp-framework as the library: <example>## src/tools/ExampleTool.ts
+
+```ts
+import { MCPTool } from "mcp-framework";
+import { z } from "zod";
+
+interface ExampleInput {
+  message: string;
+}
+
+class ExampleTool extends MCPTool<ExampleInput> {
+  name = "example_tool";
+  description = "An example tool that processes messages";
+
+  schema = {
+    message: {
+      type: z.string(),
+      description: "Message to process",
+    },
+  };
+
+  async execute(input: ExampleInput) {
+    return `Processed: ${input.message}`;
+  }
+}
+
+export default ExampleTool;
+```
+
+## src/index.ts
+
+```ts
+import { MCPServer } from "mcp-framework";
+
+const server = new MCPServer({transport:{
+  type:"http-stream",
+  options:{
+    port:1337,
+    cors: {
+      allowOrigin:"*"
+    }
+  }
+}});
+
+server.start();
+
+```
+
+## package.json
+
+```json
+{
+  "name": "http2-hi",
+  "version": "0.0.1",
+  "description": "http2-hi MCP server",
+  "type": "module",
+  "bin": {
+    "http2-hi": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc && mcp-build",
+    "watch": "tsc --watch",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "mcp-framework": "^0.2.12-beta.4",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.19.0"
+  }
+}
+
+```
+</example>
+
+It's important to keep in mind that mcp-framework is used exclusively as a dependency in other repositories - just like express js would be.
+This means that we are running it from node_modules within the repo - this impacts how relative directories work

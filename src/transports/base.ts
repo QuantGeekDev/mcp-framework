@@ -5,6 +5,16 @@ import { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
  * Base transport interface
  */
 export interface BaseTransport extends Transport {
+  // Properties from SDK Transport (explicitly listed for clarity/safety)
+  onclose?: (() => void) | undefined;
+  onerror?: ((error: Error) => void) | undefined;
+  onmessage?: ((message: JSONRPCMessage) => void) | undefined;
+
+  // Methods from SDK Transport (explicitly listed for clarity/safety)
+  send(message: JSONRPCMessage): Promise<void>;
+  close(): Promise<void>;
+  start(): Promise<void>; // Assuming start is also needed, mirroring AbstractTransport
+
   /**
    * The type of transport (e.g., "stdio", "sse")
    */

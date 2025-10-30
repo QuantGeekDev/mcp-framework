@@ -1,5 +1,8 @@
+
 import { readFile } from "fs/promises";
 import { findUp } from 'find-up';
+import { logger } from "../../core/Logger.js";
+
 
 export async function validateMCPProject() {
   try {
@@ -8,10 +11,7 @@ export async function validateMCPProject() {
     if (!packageJsonPath) {
       throw new Error("Could not find package.json in current directory or any parent directories");
     }
-
-    const packageJsonContent = await readFile(packageJsonPath, 'utf-8');
-    const package_json = JSON.parse(packageJsonContent);
-
+    const package_json = JSON.parse(await readFile(packageJsonPath, "utf-8"));
     if (
       !package_json.dependencies?.["mcp-framework"] &&
       !package_json.devDependencies?.["mcp-framework"]
@@ -22,6 +22,7 @@ export async function validateMCPProject() {
     }
   } catch (error) {
     console.error("Error: Must be run from an MCP project directory");
+    logger.error(`Project validation failed: ${(error as Error).message}`);
     process.exit(1);
   }
 }

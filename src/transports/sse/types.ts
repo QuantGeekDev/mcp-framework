@@ -117,9 +117,9 @@ export type SSETransportConfigInternal = Required<Omit<SSETransportConfig, 'head
  */
 export const DEFAULT_CORS_CONFIG: CORSConfig = {
   allowOrigin: "*",
-  allowMethods: "GET, POST, OPTIONS",
-  allowHeaders: "Content-Type, Authorization, x-api-key",
-  exposeHeaders: "Content-Type, Authorization, x-api-key",
+  allowMethods: "GET, POST, DELETE, OPTIONS",
+  allowHeaders: "Content-Type, Accept, Authorization, x-api-key, Mcp-Session-Id, Last-Event-ID",
+  exposeHeaders: "Content-Type, Authorization, x-api-key, Mcp-Session-Id",
   maxAge: "86400"
 };
 

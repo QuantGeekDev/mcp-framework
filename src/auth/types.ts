@@ -7,7 +7,7 @@ export interface AuthResult {
   /**
    * User or token data from authentication
    */
-  data?: Record<string, any>;
+  data?: Record<string, unknown>;
 }
 
 /**

@@ -1,6 +1,7 @@
 import { IncomingMessage } from "node:http";
 import jwt, { Algorithm } from "jsonwebtoken";
 import { AuthProvider, AuthResult, DEFAULT_AUTH_ERROR } from "../types.js";
+import { logger } from "../../core/Logger.js";
 
 /**
  * Configuration options for JWT authentication
@@ -72,7 +73,8 @@ export class JWTAuthProvider implements AuthProvider {
       return {
         data: typeof decoded === "object" ? decoded : { sub: decoded }
       };
-    } catch (err) {
+    } catch (error) {
+      logger.debug(`JWT verification failed: ${(error as Error).message}`);
       return false;
     }
   }
