@@ -24,7 +24,7 @@ export interface AuthProvider {
   /**
    * Get error details for failed authentication
    */
-  getAuthError?(): { status: number; message: string };
+  getAuthError?(): { status: number; message: string; headers?: Record<string, string> };
 }
 
 /**
@@ -51,6 +51,13 @@ export interface AuthConfig {
      * @default true
      */
     messages?: boolean;
+
+    /**
+     * Whether to authenticate OAuth endpoints
+     * Note: Protected Resource Metadata endpoint is public by spec (RFC9728)
+     * @default false
+     */
+    oauth?: boolean;
   };
 }
 

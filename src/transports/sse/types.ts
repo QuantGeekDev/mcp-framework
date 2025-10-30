@@ -76,15 +76,40 @@ export interface SSETransportConfig {
    * Authentication configuration
    */
   auth?: AuthConfig;
+
+  /**
+   * OAuth configuration for authorization callbacks
+   * This enables OAuth endpoints like /.well-known/oauth-protected-resource
+   */
+  oauth?: {
+    /**
+     * Callback handler for successful OAuth authorization
+     * @param accessToken The access token received
+     * @param refreshToken The refresh token if available
+     * @param expiresIn Token expiration time in seconds
+     */
+    onCallback?: (params: {
+      accessToken: string;
+      refreshToken?: string;
+      expiresIn?: number;
+      state?: string;
+    }) => Promise<void> | void;
+
+    /**
+     * Error handler for OAuth failures
+     */
+    onError?: (error: Error, state?: string) => Promise<void> | void;
+  };
 }
 
 /**
  * Internal configuration type with required fields except headers
  */
-export type SSETransportConfigInternal = Required<Omit<SSETransportConfig, 'headers' | 'auth' | 'cors'>> & {
+export type SSETransportConfigInternal = Required<Omit<SSETransportConfig, 'headers' | 'auth' | 'cors' | 'oauth'>> & {
   headers?: Record<string, string>;
   auth?: AuthConfig;
   cors?: CORSConfig;
+  oauth?: SSETransportConfig['oauth'];
 };
 
 /**

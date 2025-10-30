@@ -11,7 +11,7 @@ MCP-Framework gives you architecture out of the box, with automatic directory-ba
 - TypeScript-first development with full type safety
 - Built on the official MCP SDK
 - Easy-to-use base classes for tools, prompts, and resources
-- Out of the box authentication for SSE endpoints
+- Out of the box authentication for SSE endpoints (OAuth 2.1, JWT, API Key)
 
 
 # [Read the full docs here](https://mcp-framework.com)
@@ -269,7 +269,65 @@ const server = new MCPServer({
 
 ## Authentication
 
-MCP Framework provides optional authentication for SSE endpoints. You can choose between JWT and API Key authentication, or implement your own custom authentication provider.
+MCP Framework provides optional authentication for SSE endpoints. You can choose between JWT, API Key, OAuth 2.1 authentication, or implement your own custom authentication provider.
+
+### OAuth 2.1 Authentication
+
+The framework supports OAuth 2.1 authorization with PKCE, implementing the MCP authorization specification. This is ideal for integrating with authorization servers like AWS Cognito, Auth0, Okta, etc.
+
+```typescript
+import { MCPServer, OAuthProvider } from "mcp-framework";
+
+const server = new MCPServer({
+  transport: {
+    type: "sse",
+    options: {
+      auth: {
+        provider: new OAuthProvider({
+          // Your authorization server (e.g., Cognito)
+          authorizationServer: "https://your-domain.auth.us-east-1.amazoncognito.com",
+          
+          // OAuth client credentials
+          clientId: process.env.OAUTH_CLIENT_ID,
+          clientSecret: process.env.OAUTH_CLIENT_SECRET, // Optional for public clients
+          
+          // The canonical URI of this MCP server
+          resourceUri: "https://mcp.example.com",
+          
+          // Required scopes
+          requiredScopes: ["openid", "profile"],
+        }),
+        endpoints: {
+          sse: false,      // SSE endpoint is public
+          messages: true,  // Messages require authentication
+        }
+      },
+      // Handle OAuth callbacks
+      oauth: {
+        onCallback: async ({ accessToken, refreshToken }) => {
+          console.log("User authorized successfully!");
+        },
+        onError: async (error) => {
+          console.error("Authorization failed:", error);
+        }
+      }
+    }
+  }
+});
+```
+
+**OAuth Features:**
+- 🔐 **OAuth 2.1 with PKCE**: Enhanced security with Proof Key for Code Exchange
+- 🌐 **Protected Resource Metadata (RFC 9728)**: Automatic authorization server discovery
+- 🎯 **Resource Indicators (RFC 8707)**: Explicit token audience binding
+- ✅ **Token Validation**: Support for JWT and opaque tokens
+- 🔄 **Token Caching**: Configurable token validation caching
+- 🛡️ **Strict Audience Validation**: Prevents token misuse across services
+
+**Quick Links:**
+- [OAuth Setup Guide](./OAUTH_GUIDE.md)
+- [Cognito Example](./examples/oauth-cognito-example.ts)
+- [Custom Validator Example](./examples/oauth-custom-validator.ts)
 
 ### JWT Authentication
 
