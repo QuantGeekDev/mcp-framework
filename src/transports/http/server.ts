@@ -5,11 +5,9 @@ import { JSONRPCMessage, isInitializeRequest } from '@modelcontextprotocol/sdk/t
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { HttpStreamTransportConfig } from './types.js';
 import { logger } from '../../core/Logger.js';
-import { APIKeyAuthProvider } from '../../auth/providers/apikey.js';
-import { DEFAULT_AUTH_ERROR } from '../../auth/types.js';
-import { getRequestHeader } from '../../utils/headers.js';
-import { OAuthAuthProvider } from '../../auth/providers/oauth.js';
 import { ProtectedResourceMetadata } from '../../auth/metadata/protected-resource.js';
+import { handleAuthentication } from '../utils/auth-handler.js';
+import { initializeOAuthMetadata } from '../utils/oauth-metadata.js';
 
 export class HttpStreamTransport extends AbstractTransport {
   readonly type = 'http-stream';
@@ -31,14 +29,8 @@ export class HttpStreamTransport extends AbstractTransport {
     this._endpoint = config.endpoint || '/mcp';
     this._enableJsonResponse = config.responseMode === 'batch';
 
-    if (this._config.auth?.provider instanceof OAuthAuthProvider) {
-      const oauthProvider = this._config.auth.provider as OAuthAuthProvider;
-      this._oauthMetadata = new ProtectedResourceMetadata({
-        authorizationServers: (oauthProvider as any).config.authorizationServers,
-        resource: (oauthProvider as any).config.resource,
-      });
-      logger.debug('OAuth metadata endpoint enabled for HTTP Stream transport');
-    }
+    // Initialize OAuth metadata if OAuth provider is configured
+    this._oauthMetadata = initializeOAuthMetadata(this._config.auth, 'HTTP Stream');
 
     logger.debug(
       `HttpStreamTransport configured with: ${JSON.stringify({
@@ -114,84 +106,73 @@ export class HttpStreamTransport extends AbstractTransport {
     const sessionId = req.headers['mcp-session-id'] as string | undefined;
     let transport: StreamableHTTPServerTransport;
 
-    if (sessionId && this._transports[sessionId]) {
-      if (this._config.auth?.endpoints?.messages !== false) {
-        const isAuthenticated = await this.handleAuthentication(req, res, 'message');
-        if (!isAuthenticated) return;
-      }
+    // Determine if this is an initialize request (needs body parsing)
+    const body = req.method === 'POST' ? await this.readRequestBody(req) : null;
+    const isInitialize = !sessionId && body && isInitializeRequest(body);
 
+    // Perform authentication check once at the beginning
+    const authEndpoint = isInitialize ? 'sse' : 'messages';
+    if (this._config.auth?.endpoints?.[authEndpoint] !== false) {
+      const isAuthenticated = await handleAuthentication(
+        req,
+        res,
+        this._config.auth,
+        isInitialize ? 'initialize' : 'message'
+      );
+      if (!isAuthenticated) return;
+    }
+
+    // Handle different request scenarios
+    if (sessionId && this._transports[sessionId]) {
+      // Existing session
       transport = this._transports[sessionId];
       logger.debug(`Reusing existing session: ${sessionId}`);
-    } else if (!sessionId && req.method === 'POST') {
-      const body = await this.readRequestBody(req);
+    } else if (isInitialize) {
+      // New session initialization
+      logger.info('Creating new session for initialization request');
 
-      if (isInitializeRequest(body)) {
-        if (this._config.auth?.endpoints?.sse) {
-          const isAuthenticated = await this.handleAuthentication(req, res, 'initialize');
-          if (!isAuthenticated) return;
+      transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        onsessioninitialized: (sessionId: string) => {
+          logger.info(`Session initialized: ${sessionId}`);
+          this._transports[sessionId] = transport;
+        },
+        enableJsonResponse: this._enableJsonResponse,
+      });
+
+      transport.onclose = () => {
+        if (transport.sessionId) {
+          logger.info(`Transport closed for session: ${transport.sessionId}`);
+          delete this._transports[transport.sessionId];
         }
+      };
 
-        logger.info('Creating new session for initialization request');
-
-        transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: () => randomUUID(),
-          onsessioninitialized: (sessionId: string) => {
-            logger.info(`Session initialized: ${sessionId}`);
-            this._transports[sessionId] = transport;
-          },
-          enableJsonResponse: this._enableJsonResponse,
-        });
-
-        transport.onclose = () => {
-          if (transport.sessionId) {
-            logger.info(`Transport closed for session: ${transport.sessionId}`);
-            delete this._transports[transport.sessionId];
-          }
-        };
-
-        transport.onerror = (error) => {
-          logger.error(`Transport error for session: ${error}`);
-          if (transport.sessionId) {
-            delete this._transports[transport.sessionId];
-          }
-        };
-
-        transport.onmessage = async (message: JSONRPCMessage) => {
-          if (this._onmessage) {
-            await this._onmessage(message);
-          }
-        };
-
-        await transport.handleRequest(req, res, body);
-        return;
-      } else {
-        if (this._config.auth?.endpoints?.messages !== false) {
-          const isAuthenticated = await this.handleAuthentication(req, res, 'message');
-          if (!isAuthenticated) return;
+      transport.onerror = (error) => {
+        logger.error(`Transport error for session: ${error}`);
+        if (transport.sessionId) {
+          delete this._transports[transport.sessionId];
         }
+      };
 
-        this.sendError(res, 400, -32000, 'Bad Request: No valid session ID provided');
-        return;
-      }
+      transport.onmessage = async (message: JSONRPCMessage) => {
+        if (this._onmessage) {
+          await this._onmessage(message);
+        }
+      };
+
+      await transport.handleRequest(req, res, body);
+      return;
     } else if (!sessionId) {
-      if (this._config.auth?.endpoints?.messages !== false) {
-        const isAuthenticated = await this.handleAuthentication(req, res, 'message');
-        if (!isAuthenticated) return;
-      }
-
+      // No session ID and not an initialize request
       this.sendError(res, 400, -32000, 'Bad Request: No valid session ID provided');
       return;
     } else {
-      if (this._config.auth?.endpoints?.messages !== false) {
-        const isAuthenticated = await this.handleAuthentication(req, res, 'message');
-        if (!isAuthenticated) return;
-      }
-
+      // Session ID provided but not found
       this.sendError(res, 404, -32001, 'Session not found');
       return;
     }
 
-    const body = await this.readRequestBody(req);
+    // Existing session - handle request
     await transport.handleRequest(req, res, body);
   }
 
@@ -226,61 +207,6 @@ export class HttpStreamTransport extends AbstractTransport {
         id: null,
       })
     );
-  }
-
-  private async handleAuthentication(req: IncomingMessage, res: ServerResponse, context: string): Promise<boolean> {
-    if (!this._config.auth?.provider) {
-      return true;
-    }
-
-    const isApiKey = this._config.auth.provider instanceof APIKeyAuthProvider;
-    if (isApiKey) {
-      const provider = this._config.auth.provider as APIKeyAuthProvider;
-      const headerValue = getRequestHeader(req.headers, provider.getHeaderName());
-
-      if (!headerValue) {
-        const error = provider.getAuthError?.() || DEFAULT_AUTH_ERROR;
-        res.setHeader('WWW-Authenticate', `ApiKey realm="MCP Server", header="${provider.getHeaderName()}"`);
-        res.writeHead(error.status).end(
-          JSON.stringify({
-            error: error.message,
-            status: error.status,
-            type: 'authentication_error',
-          })
-        );
-        return false;
-      }
-    }
-
-    const authResult = await this._config.auth.provider.authenticate(req);
-    if (!authResult) {
-      const error = this._config.auth.provider.getAuthError?.() || DEFAULT_AUTH_ERROR;
-      logger.warn(`Authentication failed for ${context}:`);
-      logger.warn(`- Client IP: ${req.socket.remoteAddress}`);
-      logger.warn(`- Error: ${error.message}`);
-
-      if (isApiKey) {
-        const provider = this._config.auth.provider as APIKeyAuthProvider;
-        res.setHeader('WWW-Authenticate', `ApiKey realm="MCP Server", header="${provider.getHeaderName()}"`);
-      } else if (this._config.auth.provider instanceof OAuthAuthProvider) {
-        const provider = this._config.auth.provider as OAuthAuthProvider;
-        res.setHeader('WWW-Authenticate', provider.getWWWAuthenticateHeader('invalid_token', 'Missing or invalid authentication token'));
-      }
-
-      res.writeHead(error.status).end(
-        JSON.stringify({
-          error: error.message,
-          status: error.status,
-          type: 'authentication_error',
-        })
-      );
-      return false;
-    }
-
-    logger.info(`Authentication successful for ${context}:`);
-    logger.info(`- Client IP: ${req.socket.remoteAddress}`);
-    logger.info(`- Auth Type: ${this._config.auth.provider.constructor.name}`);
-    return true;
   }
 
   async send(message: JSONRPCMessage): Promise<void> {

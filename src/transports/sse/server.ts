@@ -3,15 +3,14 @@ import { IncomingMessage, Server as HttpServer, ServerResponse, createServer } f
 import { JSONRPCMessage, ClientRequest } from "@modelcontextprotocol/sdk/types.js";
 import contentType from "content-type";
 import getRawBody from "raw-body";
-import { APIKeyAuthProvider } from "../../auth/providers/apikey.js";
-import { DEFAULT_AUTH_ERROR } from "../../auth/types.js";
 import { AbstractTransport } from "../base.js";
 import { DEFAULT_SSE_CONFIG, SSETransportConfig, SSETransportConfigInternal, DEFAULT_CORS_CONFIG, CORSConfig } from "./types.js";
 import { logger } from "../../core/Logger.js";
-import { getRequestHeader, setResponseHeaders } from "../../utils/headers.js";
+import { setResponseHeaders } from "../../utils/headers.js";
 import { PING_SSE_MESSAGE } from "../utils/ping-message.js";
-import { OAuthAuthProvider } from "../../auth/providers/oauth.js";
 import { ProtectedResourceMetadata } from "../../auth/metadata/protected-resource.js";
+import { handleAuthentication } from "../utils/auth-handler.js";
+import { initializeOAuthMetadata } from "../utils/oauth-metadata.js";
 
 
 const SSE_HEADERS = {
@@ -28,6 +27,8 @@ export class SSEServerTransport extends AbstractTransport {
   private _sessionId: string // Server instance ID
   private _config: SSETransportConfigInternal
   private _oauthMetadata?: ProtectedResourceMetadata
+  private _corsHeaders: Record<string, string>
+  private _corsHeadersWithMaxAge: Record<string, string>
 
   constructor(config: SSETransportConfig = {}) {
     super()
@@ -38,13 +39,29 @@ export class SSEServerTransport extends AbstractTransport {
       ...config
     }
 
-    if (this._config.auth?.provider instanceof OAuthAuthProvider) {
-      const oauthProvider = this._config.auth.provider as OAuthAuthProvider;
-      this._oauthMetadata = new ProtectedResourceMetadata({
-        authorizationServers: (oauthProvider as any).config.authorizationServers,
-        resource: (oauthProvider as any).config.resource,
-      });
-      logger.debug('OAuth metadata endpoint enabled for SSE transport');
+    // Initialize OAuth metadata if OAuth provider is configured
+    this._oauthMetadata = initializeOAuthMetadata(this._config.auth, 'SSE');
+
+    // Cache CORS headers for better performance
+    const corsConfig = {
+      allowOrigin: DEFAULT_CORS_CONFIG.allowOrigin,
+      allowMethods: DEFAULT_CORS_CONFIG.allowMethods,
+      allowHeaders: DEFAULT_CORS_CONFIG.allowHeaders,
+      exposeHeaders: DEFAULT_CORS_CONFIG.exposeHeaders,
+      maxAge: DEFAULT_CORS_CONFIG.maxAge,
+      ...this._config.cors
+    } as Required<CORSConfig>
+
+    this._corsHeaders = {
+      "Access-Control-Allow-Origin": corsConfig.allowOrigin,
+      "Access-Control-Allow-Methods": corsConfig.allowMethods,
+      "Access-Control-Allow-Headers": corsConfig.allowHeaders,
+      "Access-Control-Expose-Headers": corsConfig.exposeHeaders
+    }
+
+    this._corsHeadersWithMaxAge = {
+      ...this._corsHeaders,
+      "Access-Control-Max-Age": corsConfig.maxAge
     }
 
     logger.debug(`SSE transport configured with: ${JSON.stringify({
@@ -57,27 +74,7 @@ export class SSEServerTransport extends AbstractTransport {
   }
 
   private getCorsHeaders(includeMaxAge: boolean = false): Record<string, string> {
-    const corsConfig = {
-      allowOrigin: DEFAULT_CORS_CONFIG.allowOrigin,
-      allowMethods: DEFAULT_CORS_CONFIG.allowMethods,
-      allowHeaders: DEFAULT_CORS_CONFIG.allowHeaders,
-      exposeHeaders: DEFAULT_CORS_CONFIG.exposeHeaders,
-      maxAge: DEFAULT_CORS_CONFIG.maxAge,
-      ...this._config.cors
-    } as Required<CORSConfig>
-
-    const headers: Record<string, string> = {
-      "Access-Control-Allow-Origin": corsConfig.allowOrigin,
-      "Access-Control-Allow-Methods": corsConfig.allowMethods,
-      "Access-Control-Allow-Headers": corsConfig.allowHeaders,
-      "Access-Control-Expose-Headers": corsConfig.exposeHeaders
-    }
-
-    if (includeMaxAge) {
-      headers["Access-Control-Max-Age"] = corsConfig.maxAge
-    }
-
-    return headers
+    return includeMaxAge ? this._corsHeadersWithMaxAge : this._corsHeaders
   }
 
   async start(): Promise<void> {
@@ -137,7 +134,7 @@ export class SSEServerTransport extends AbstractTransport {
 
     if (req.method === "GET" && url.pathname === this._config.endpoint) {
       if (this._config.auth?.endpoints?.sse) {
-        const isAuthenticated = await this.handleAuthentication(req, res, "SSE connection")
+        const isAuthenticated = await handleAuthentication(req, res, this._config.auth, "SSE connection")
         if (!isAuthenticated) return
       }
 
@@ -168,7 +165,7 @@ export class SSEServerTransport extends AbstractTransport {
 
     if (req.method === "POST" && url.pathname === this._config.messageEndpoint) {
       if (this._config.auth?.endpoints?.messages !== false) {
-        const isAuthenticated = await this.handleAuthentication(req, res, "message")
+        const isAuthenticated = await handleAuthentication(req, res, this._config.auth, "message")
         if (!isAuthenticated) return
       }
 
@@ -188,57 +185,6 @@ export class SSEServerTransport extends AbstractTransport {
     }
 
     res.writeHead(404).end("Not Found")
-  }
-
-  private async handleAuthentication(req: IncomingMessage, res: ServerResponse, context: string): Promise<boolean> {
-    if (!this._config.auth?.provider) {
-      return true
-    }
-
-    const isApiKey = this._config.auth.provider instanceof APIKeyAuthProvider
-    if (isApiKey) {
-      const provider = this._config.auth.provider as APIKeyAuthProvider
-      const headerValue = getRequestHeader(req.headers, provider.getHeaderName())
-      
-      if (!headerValue) {
-        const error = provider.getAuthError?.() || DEFAULT_AUTH_ERROR
-        res.setHeader("WWW-Authenticate", `ApiKey realm="MCP Server", header="${provider.getHeaderName()}"`)
-        res.writeHead(error.status).end(JSON.stringify({
-          error: error.message,
-          status: error.status,
-          type: "authentication_error"
-        }))
-        return false
-      }
-    }
-
-    const authResult = await this._config.auth.provider.authenticate(req)
-    if (!authResult) {
-      const error = this._config.auth.provider.getAuthError?.() || DEFAULT_AUTH_ERROR
-      logger.warn(`Authentication failed for ${context}:`)
-      logger.warn(`- Client IP: ${req.socket.remoteAddress}`)
-      logger.warn(`- Error: ${error.message}`)
-
-      if (isApiKey) {
-        const provider = this._config.auth.provider as APIKeyAuthProvider
-        res.setHeader("WWW-Authenticate", `ApiKey realm="MCP Server", header="${provider.getHeaderName()}"`)
-      } else if (this._config.auth.provider instanceof OAuthAuthProvider) {
-        const provider = this._config.auth.provider as OAuthAuthProvider
-        res.setHeader("WWW-Authenticate", provider.getWWWAuthenticateHeader('invalid_token', 'Missing or invalid authentication token'))
-      }
-
-      res.writeHead(error.status).end(JSON.stringify({
-        error: error.message,
-        status: error.status,
-        type: "authentication_error"
-      }))
-      return false
-    }
-
-    logger.info(`Authentication successful for ${context}:`)
-    logger.info(`- Client IP: ${req.socket.remoteAddress}`)
-    logger.info(`- Auth Type: ${this._config.auth.provider.constructor.name}`)
-    return true
   }
 
   private setupSSEConnection(res: ServerResponse, connectionId: string): void {

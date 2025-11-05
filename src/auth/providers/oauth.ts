@@ -112,6 +112,14 @@ export class OAuthAuthProvider implements AuthProvider {
     return header;
   }
 
+  getAuthorizationServers(): string[] {
+    return this.config.authorizationServers;
+  }
+
+  getResource(): string {
+    return this.config.resource;
+  }
+
   private extractToken(req: IncomingMessage): string | null {
     const authHeader = req.headers[this.config.headerName!.toLowerCase()];
 
