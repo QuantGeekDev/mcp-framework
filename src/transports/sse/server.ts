@@ -10,6 +10,8 @@ import { DEFAULT_SSE_CONFIG, SSETransportConfig, SSETransportConfigInternal, DEF
 import { logger } from "../../core/Logger.js";
 import { getRequestHeader, setResponseHeaders } from "../../utils/headers.js";
 import { PING_SSE_MESSAGE } from "../utils/ping-message.js";
+import { OAuthAuthProvider } from "../../auth/providers/oauth.js";
+import { ProtectedResourceMetadata } from "../../auth/metadata/protected-resource.js";
 
 
 const SSE_HEADERS = {
@@ -25,6 +27,7 @@ export class SSEServerTransport extends AbstractTransport {
   private _connections: Map<string, { res: ServerResponse, intervalId: NodeJS.Timeout }> // Map<connectionId, { res: ServerResponse, intervalId: NodeJS.Timeout }>
   private _sessionId: string // Server instance ID
   private _config: SSETransportConfigInternal
+  private _oauthMetadata?: ProtectedResourceMetadata
 
   constructor(config: SSETransportConfig = {}) {
     super()
@@ -34,6 +37,16 @@ export class SSEServerTransport extends AbstractTransport {
       ...DEFAULT_SSE_CONFIG,
       ...config
     }
+
+    if (this._config.auth?.provider instanceof OAuthAuthProvider) {
+      const oauthProvider = this._config.auth.provider as OAuthAuthProvider;
+      this._oauthMetadata = new ProtectedResourceMetadata({
+        authorizationServers: (oauthProvider as any).config.authorizationServers,
+        resource: (oauthProvider as any).config.resource,
+      });
+      logger.debug('OAuth metadata endpoint enabled for SSE transport');
+    }
+
     logger.debug(`SSE transport configured with: ${JSON.stringify({
       ...this._config,
       auth: this._config.auth ? {
@@ -112,6 +125,15 @@ export class SSEServerTransport extends AbstractTransport {
 
     const url = new URL(req.url!, `http://${req.headers.host}`)
     const sessionId = url.searchParams.get("sessionId")
+
+    if (req.method === "GET" && url.pathname === "/.well-known/oauth-protected-resource") {
+      if (this._oauthMetadata) {
+        this._oauthMetadata.serve(res);
+      } else {
+        res.writeHead(404).end("Not Found");
+      }
+      return;
+    }
 
     if (req.method === "GET" && url.pathname === this._config.endpoint) {
       if (this._config.auth?.endpoints?.sse) {

@@ -4,6 +4,8 @@ import {
   JSONRPCMessage,
   RequestId,
 } from '@modelcontextprotocol/sdk/types.js';
+import { AuthConfig } from '../../auth/types.js';
+import { CORSConfig } from '../sse/types.js';
 
 export { JSONRPCRequest, JSONRPCResponse, JSONRPCMessage, RequestId };
 
@@ -86,12 +88,12 @@ export interface HttpStreamTransportConfig {
   /**
    * Authentication configuration
    */
-  auth?: any;
+  auth?: AuthConfig;
 
   /**
    * CORS configuration
    */
-  cors?: any;
+  cors?: CORSConfig;
 }
 
 export const DEFAULT_SESSION_CONFIG: SessionConfig = {

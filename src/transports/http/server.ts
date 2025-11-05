@@ -5,6 +5,11 @@ import { JSONRPCMessage, isInitializeRequest } from '@modelcontextprotocol/sdk/t
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { HttpStreamTransportConfig } from './types.js';
 import { logger } from '../../core/Logger.js';
+import { APIKeyAuthProvider } from '../../auth/providers/apikey.js';
+import { DEFAULT_AUTH_ERROR } from '../../auth/types.js';
+import { getRequestHeader } from '../../utils/headers.js';
+import { OAuthAuthProvider } from '../../auth/providers/oauth.js';
+import { ProtectedResourceMetadata } from '../../auth/metadata/protected-resource.js';
 
 export class HttpStreamTransport extends AbstractTransport {
   readonly type = 'http-stream';
@@ -13,15 +18,27 @@ export class HttpStreamTransport extends AbstractTransport {
   private _server?: HttpServer;
   private _endpoint: string;
   private _enableJsonResponse: boolean = false;
+  private _config: HttpStreamTransportConfig;
+  private _oauthMetadata?: ProtectedResourceMetadata;
 
   private _transports: { [sessionId: string]: StreamableHTTPServerTransport } = {};
 
   constructor(config: HttpStreamTransportConfig = {}) {
     super();
 
+    this._config = config;
     this._port = config.port || 8080;
     this._endpoint = config.endpoint || '/mcp';
     this._enableJsonResponse = config.responseMode === 'batch';
+
+    if (this._config.auth?.provider instanceof OAuthAuthProvider) {
+      const oauthProvider = this._config.auth.provider as OAuthAuthProvider;
+      this._oauthMetadata = new ProtectedResourceMetadata({
+        authorizationServers: (oauthProvider as any).config.authorizationServers,
+        resource: (oauthProvider as any).config.resource,
+      });
+      logger.debug('OAuth metadata endpoint enabled for HTTP Stream transport');
+    }
 
     logger.debug(
       `HttpStreamTransport configured with: ${JSON.stringify({
@@ -30,7 +47,10 @@ export class HttpStreamTransport extends AbstractTransport {
         responseMode: config.responseMode,
         batchTimeout: config.batchTimeout,
         maxMessageSize: config.maxMessageSize,
-        auth: config.auth ? true : false,
+        auth: config.auth ? {
+          provider: config.auth.provider.constructor.name,
+          endpoints: config.auth.endpoints
+        } : undefined,
         cors: config.cors ? true : false,
       })}`
     );
@@ -45,6 +65,15 @@ export class HttpStreamTransport extends AbstractTransport {
       this._server = createServer(async (req, res) => {
         try {
           const url = new URL(req.url!, `http://${req.headers.host}`);
+
+          if (req.method === 'GET' && url.pathname === '/.well-known/oauth-protected-resource') {
+            if (this._oauthMetadata) {
+              this._oauthMetadata.serve(res);
+            } else {
+              res.writeHead(404).end('Not Found');
+            }
+            return;
+          }
 
           if (url.pathname === this._endpoint) {
             await this.handleMcpRequest(req, res);
@@ -86,12 +115,22 @@ export class HttpStreamTransport extends AbstractTransport {
     let transport: StreamableHTTPServerTransport;
 
     if (sessionId && this._transports[sessionId]) {
+      if (this._config.auth?.endpoints?.messages !== false) {
+        const isAuthenticated = await this.handleAuthentication(req, res, 'message');
+        if (!isAuthenticated) return;
+      }
+
       transport = this._transports[sessionId];
       logger.debug(`Reusing existing session: ${sessionId}`);
     } else if (!sessionId && req.method === 'POST') {
       const body = await this.readRequestBody(req);
 
       if (isInitializeRequest(body)) {
+        if (this._config.auth?.endpoints?.sse) {
+          const isAuthenticated = await this.handleAuthentication(req, res, 'initialize');
+          if (!isAuthenticated) return;
+        }
+
         logger.info('Creating new session for initialization request');
 
         transport = new StreamableHTTPServerTransport({
@@ -172,6 +211,58 @@ export class HttpStreamTransport extends AbstractTransport {
         id: null,
       })
     );
+  }
+
+  private async handleAuthentication(req: IncomingMessage, res: ServerResponse, context: string): Promise<boolean> {
+    if (!this._config.auth?.provider) {
+      return true;
+    }
+
+    const isApiKey = this._config.auth.provider instanceof APIKeyAuthProvider;
+    if (isApiKey) {
+      const provider = this._config.auth.provider as APIKeyAuthProvider;
+      const headerValue = getRequestHeader(req.headers, provider.getHeaderName());
+
+      if (!headerValue) {
+        const error = provider.getAuthError?.() || DEFAULT_AUTH_ERROR;
+        res.setHeader('WWW-Authenticate', `ApiKey realm="MCP Server", header="${provider.getHeaderName()}"`);
+        res.writeHead(error.status).end(
+          JSON.stringify({
+            error: error.message,
+            status: error.status,
+            type: 'authentication_error',
+          })
+        );
+        return false;
+      }
+    }
+
+    const authResult = await this._config.auth.provider.authenticate(req);
+    if (!authResult) {
+      const error = this._config.auth.provider.getAuthError?.() || DEFAULT_AUTH_ERROR;
+      logger.warn(`Authentication failed for ${context}:`);
+      logger.warn(`- Client IP: ${req.socket.remoteAddress}`);
+      logger.warn(`- Error: ${error.message}`);
+
+      if (isApiKey) {
+        const provider = this._config.auth.provider as APIKeyAuthProvider;
+        res.setHeader('WWW-Authenticate', `ApiKey realm="MCP Server", header="${provider.getHeaderName()}"`);
+      }
+
+      res.writeHead(error.status).end(
+        JSON.stringify({
+          error: error.message,
+          status: error.status,
+          type: 'authentication_error',
+        })
+      );
+      return false;
+    }
+
+    logger.info(`Authentication successful for ${context}:`);
+    logger.info(`- Client IP: ${req.socket.remoteAddress}`);
+    logger.info(`- Auth Type: ${this._config.auth.provider.constructor.name}`);
+    return true;
   }
 
   async send(message: JSONRPCMessage): Promise<void> {

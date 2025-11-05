@@ -7,12 +7,20 @@ import { execa } from 'execa';
 
 export async function createProject(
   name?: string,
-  options?: { http?: boolean; cors?: boolean; port?: number; install?: boolean; example?: boolean }
+  options?: { http?: boolean; cors?: boolean; port?: number; oauth?: boolean; install?: boolean; example?: boolean }
 ) {
   let projectName: string;
   // Default install and example to true if not specified
   const shouldInstall = options?.install !== false;
   const shouldCreateExample = options?.example !== false;
+
+  // Validate OAuth requires HTTP
+  if (options?.oauth && !options?.http) {
+    console.error('❌ Error: --oauth requires --http flag');
+    console.error('   OAuth authentication is only available with HTTP transports (SSE or HTTP Stream)');
+    console.error('   Use: mcp create <name> --http --oauth');
+    process.exit(1);
+  }
 
   if (!name) {
     const response = await prompts([
@@ -67,6 +75,7 @@ export async function createProject(
       },
       dependencies: {
         'mcp-framework': '^0.2.2',
+        ...(options?.oauth && { dotenv: '^16.3.1' }),
       },
       devDependencies: {
         '@types/node': '^20.11.24',
@@ -105,27 +114,90 @@ logs
 
     if (options?.http) {
       const port = options.port || 8080;
-      let transportConfig = `\n  transport: {
+
+      if (options?.oauth) {
+        // OAuth configuration
+        indexTs = `import { MCPServer, OAuthAuthProvider } from "mcp-framework";
+import dotenv from "dotenv";
+
+// Load environment variables
+dotenv.config();
+
+// Validate required OAuth environment variables
+const requiredEnvs = [
+  'OAUTH_AUTHORIZATION_SERVER',
+  'OAUTH_RESOURCE',
+  'OAUTH_AUDIENCE',
+  'OAUTH_ISSUER',
+  'OAUTH_JWKS_URI',
+];
+
+for (const env of requiredEnvs) {
+  if (!process.env[env]) {
+    console.error(\`❌ Missing required environment variable: \${env}\`);
+    console.error('Please copy .env.example to .env and configure your OAuth provider');
+    process.exit(1);
+  }
+}
+
+// Create OAuth provider with JWT validation
+const oauthProvider = new OAuthAuthProvider({
+  authorizationServers: [process.env.OAUTH_AUTHORIZATION_SERVER!],
+  resource: process.env.OAUTH_RESOURCE!,
+  validation: {
+    type: 'jwt',
+    jwksUri: process.env.OAUTH_JWKS_URI!,
+    audience: process.env.OAUTH_AUDIENCE!,
+    issuer: process.env.OAUTH_ISSUER!,
+  }
+});
+
+const server = new MCPServer({
+  transport: {
+    type: "http-stream",
+    options: {
+      port: ${port},
+      auth: {
+        provider: oauthProvider,
+        endpoints: {
+          initialize: true,  // Require auth for session initialization
+          messages: true     // Require auth for MCP messages
+        }
+      }${options.cors ? `,
+      cors: {
+        allowOrigin: "*"
+      }` : ''}
+    }
+  }
+});
+
+await server.start();
+console.log('🔐 MCP Server with OAuth 2.1 running on http://localhost:${port}');
+console.log('📋 OAuth Metadata: http://localhost:${port}/.well-known/oauth-protected-resource');`;
+      } else {
+        // Regular HTTP configuration without OAuth
+        let transportConfig = `\n  transport: {
     type: "http-stream",
     options: {
       port: ${port}`;
 
-      if (options.cors) {
-        transportConfig += `,
+        if (options.cors) {
+          transportConfig += `,
       cors: {
         allowOrigin: "*"
       }`;
-      }
+        }
 
-      transportConfig += `
+        transportConfig += `
     }
   }`;
 
-      indexTs = `import { MCPServer } from "mcp-framework";
+        indexTs = `import { MCPServer } from "mcp-framework";
 
 const server = new MCPServer({${transportConfig}});
 
 server.start();`;
+      }
     } else {
       indexTs = `import { MCPServer } from "mcp-framework";
 
@@ -134,7 +206,40 @@ const server = new MCPServer();
 server.start();`;
     }
 
-    const exampleToolTs = `import { MCPTool } from "mcp-framework";
+    // Generate example tool (OAuth-aware if OAuth is enabled)
+    const exampleToolTs = options?.oauth
+      ? `import { MCPTool } from "mcp-framework";
+import { z } from "zod";
+
+interface ExampleInput {
+  message: string;
+}
+
+class ExampleTool extends MCPTool<ExampleInput> {
+  name = "example_tool";
+  description = "An example authenticated tool that processes messages";
+
+  schema = {
+    message: {
+      type: z.string(),
+      description: "Message to process",
+    },
+  };
+
+  async execute(input: ExampleInput, context?: any) {
+    // Access authentication claims from OAuth token
+    const claims = context?.auth?.data;
+    const userId = claims?.sub || 'unknown';
+    const scope = claims?.scope || 'N/A';
+
+    return \`Processed: \${input.message}
+Authenticated as: \${userId}
+Token scope: \${scope}\`;
+  }
+}
+
+export default ExampleTool;`
+      : `import { MCPTool } from "mcp-framework";
 import { z } from "zod";
 
 interface ExampleInput {
@@ -159,6 +264,49 @@ class ExampleTool extends MCPTool<ExampleInput> {
 
 export default ExampleTool;`;
 
+    // Generate .env.example for OAuth projects
+    const envExample = `# OAuth 2.1 Configuration
+# See docs/OAUTH.md for detailed setup instructions
+
+# Server Configuration
+PORT=${options?.port || 8080}
+
+# OAuth Configuration - JWT Validation (Recommended)
+OAUTH_AUTHORIZATION_SERVER=https://auth.example.com
+OAUTH_RESOURCE=https://mcp.example.com
+OAUTH_JWKS_URI=https://auth.example.com/.well-known/jwks.json
+OAUTH_AUDIENCE=https://mcp.example.com
+OAUTH_ISSUER=https://auth.example.com
+
+# Popular Provider Examples:
+
+# --- Auth0 ---
+# OAUTH_AUTHORIZATION_SERVER=https://your-tenant.auth0.com
+# OAUTH_JWKS_URI=https://your-tenant.auth0.com/.well-known/jwks.json
+# OAUTH_AUDIENCE=https://mcp.example.com
+# OAUTH_ISSUER=https://your-tenant.auth0.com/
+# OAUTH_RESOURCE=https://mcp.example.com
+
+# --- Okta ---
+# OAUTH_AUTHORIZATION_SERVER=https://your-domain.okta.com/oauth2/default
+# OAUTH_JWKS_URI=https://your-domain.okta.com/oauth2/default/v1/keys
+# OAUTH_AUDIENCE=api://mcp-server
+# OAUTH_ISSUER=https://your-domain.okta.com/oauth2/default
+# OAUTH_RESOURCE=api://mcp-server
+
+# --- AWS Cognito ---
+# OAUTH_AUTHORIZATION_SERVER=https://cognito-idp.REGION.amazonaws.com/POOL_ID
+# OAUTH_JWKS_URI=https://cognito-idp.REGION.amazonaws.com/POOL_ID/.well-known/jwks.json
+# OAUTH_AUDIENCE=YOUR_APP_CLIENT_ID
+# OAUTH_ISSUER=https://cognito-idp.REGION.amazonaws.com/POOL_ID
+# OAUTH_RESOURCE=YOUR_APP_CLIENT_ID
+
+# Logging (Optional)
+# MCP_ENABLE_FILE_LOGGING=true
+# MCP_LOG_DIRECTORY=logs
+# MCP_DEBUG_CONSOLE=true
+`;
+
     const filesToWrite = [
       writeFile(join(projectDir, 'package.json'), JSON.stringify(packageJson, null, 2)),
       writeFile(join(projectDir, 'tsconfig.json'), JSON.stringify(tsconfig, null, 2)),
@@ -166,6 +314,11 @@ export default ExampleTool;`;
       writeFile(join(srcDir, 'index.ts'), indexTs),
       writeFile(join(projectDir, '.gitignore'), gitignore),
     ];
+
+    // Add .env.example for OAuth projects
+    if (options?.oauth) {
+      filesToWrite.push(writeFile(join(projectDir, '.env.example'), envExample));
+    }
 
     if (shouldCreateExample) {
       filesToWrite.push(writeFile(join(toolsDir, 'ExampleTool.ts'), exampleToolTs));
@@ -220,7 +373,25 @@ export default ExampleTool;`;
         throw new Error('Failed to run mcp-build');
       }
 
-      console.log(`
+      if (options?.oauth) {
+        console.log(`
+✅ Project ${projectName} created and built successfully with OAuth 2.1!
+
+🔐 OAuth Setup Required:
+1. cd ${projectName}
+2. Copy .env.example to .env
+3. Configure your OAuth provider settings in .env
+4. See docs/OAUTH.md for provider-specific setup guides
+
+📖 OAuth Resources:
+   - Framework docs: https://github.com/QuantGeekDev/mcp-framework/blob/main/docs/OAUTH.md
+   - Metadata endpoint: http://localhost:${options.port || 8080}/.well-known/oauth-protected-resource
+
+🛠️  Add more tools:
+   mcp add tool <tool-name>
+    `);
+      } else {
+        console.log(`
 Project ${projectName} created and built successfully!
 
 You can now:
@@ -228,8 +399,25 @@ You can now:
 2. Add more tools using:
    mcp add tool <n>
     `);
+      }
     } else {
-      console.log(`
+      if (options?.oauth) {
+        console.log(`
+✅ Project ${projectName} created successfully with OAuth 2.1 (without dependencies)!
+
+Next steps:
+1. cd ${projectName}
+2. Copy .env.example to .env
+3. Configure your OAuth provider settings in .env
+4. Run 'npm install' to install dependencies
+5. Run 'npm run build' to build the project
+6. See docs/OAUTH.md for OAuth setup guides
+
+🛠️  Add more tools:
+   mcp add tool <tool-name>
+    `);
+      } else {
+        console.log(`
 Project ${projectName} created successfully (without dependencies)!
 
 You can now:
@@ -239,6 +427,7 @@ You can now:
 4. Add more tools using:
    mcp add tool <n>
     `);
+      }
     }
   } catch (error) {
     console.error('Error creating project:', error);

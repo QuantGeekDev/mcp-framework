@@ -623,6 +623,146 @@ Clients must include a valid API key in the X-API-Key header:
 X-API-Key: your-api-key
 ```
 
+### OAuth 2.1 Authentication
+
+MCP Framework supports OAuth 2.1 authentication per the MCP specification (2025-06-18), including Protected Resource Metadata (RFC 9728) and proper token validation with JWKS support.
+
+OAuth authentication works with both SSE and HTTP Stream transports and supports two validation strategies:
+
+#### JWT Validation (Recommended for Performance)
+
+JWT validation fetches public keys from your authorization server's JWKS endpoint and validates tokens locally. This is the fastest option as it doesn't require a round-trip to the auth server for each request.
+
+```typescript
+import { MCPServer, OAuthAuthProvider } from "mcp-framework";
+
+const server = new MCPServer({
+  transport: {
+    type: "http-stream",
+    options: {
+      port: 8080,
+      auth: {
+        provider: new OAuthAuthProvider({
+          authorizationServers: [
+            process.env.OAUTH_AUTHORIZATION_SERVER
+          ],
+          resource: process.env.OAUTH_RESOURCE,
+          validation: {
+            type: 'jwt',
+            jwksUri: process.env.OAUTH_JWKS_URI,
+            audience: process.env.OAUTH_AUDIENCE,
+            issuer: process.env.OAUTH_ISSUER,
+            algorithms: ['RS256', 'ES256'] // Optional (default: ['RS256', 'ES256'])
+          }
+        }),
+        endpoints: {
+          initialize: true,  // Protect session initialization
+          messages: true     // Protect MCP messages
+        }
+      }
+    }
+  }
+});
+```
+
+**Environment Variables:**
+```bash
+OAUTH_AUTHORIZATION_SERVER=https://auth.example.com
+OAUTH_RESOURCE=https://mcp.example.com
+OAUTH_JWKS_URI=https://auth.example.com/.well-known/jwks.json
+OAUTH_AUDIENCE=https://mcp.example.com
+OAUTH_ISSUER=https://auth.example.com
+```
+
+#### Token Introspection (Recommended for Centralized Control)
+
+Token introspection validates tokens by calling your authorization server's introspection endpoint. This provides centralized control and is useful when you need real-time token revocation.
+
+```typescript
+import { MCPServer, OAuthAuthProvider } from "mcp-framework";
+
+const server = new MCPServer({
+  transport: {
+    type: "sse",
+    options: {
+      auth: {
+        provider: new OAuthAuthProvider({
+          authorizationServers: [
+            process.env.OAUTH_AUTHORIZATION_SERVER
+          ],
+          resource: process.env.OAUTH_RESOURCE,
+          validation: {
+            type: 'introspection',
+            audience: process.env.OAUTH_AUDIENCE,
+            issuer: process.env.OAUTH_ISSUER,
+            introspection: {
+              endpoint: process.env.OAUTH_INTROSPECTION_ENDPOINT,
+              clientId: process.env.OAUTH_CLIENT_ID,
+              clientSecret: process.env.OAUTH_CLIENT_SECRET
+            }
+          }
+        })
+      }
+    }
+  }
+});
+```
+
+**Environment Variables:**
+```bash
+OAUTH_AUTHORIZATION_SERVER=https://auth.example.com
+OAUTH_RESOURCE=https://mcp.example.com
+OAUTH_AUDIENCE=https://mcp.example.com
+OAUTH_ISSUER=https://auth.example.com
+OAUTH_INTROSPECTION_ENDPOINT=https://auth.example.com/oauth/introspect
+OAUTH_CLIENT_ID=mcp-server
+OAUTH_CLIENT_SECRET=your-client-secret
+```
+
+#### OAuth Features
+
+- **RFC 9728 Compliance**: Automatic Protected Resource Metadata endpoint at `/.well-known/oauth-protected-resource`
+- **RFC 6750 WWW-Authenticate Headers**: Proper OAuth error responses with challenge headers
+- **JWKS Key Caching**: Public keys cached for 15 minutes (configurable)
+- **Token Introspection Caching**: Introspection results cached for 5 minutes (configurable)
+- **Security**: Tokens in query strings are automatically rejected
+- **Claims Extraction**: Access token claims in your tool handlers via `AuthResult`
+
+#### Popular OAuth Providers
+
+The OAuth provider works with any RFC-compliant OAuth 2.1 authorization server:
+
+- **Auth0**: Use your Auth0 tenant's JWKS URI and issuer
+- **Okta**: Use your Okta authorization server configuration
+- **AWS Cognito**: Use your Cognito user pool's JWKS endpoint
+- **Azure AD / Entra ID**: Use Microsoft Entra ID endpoints
+- **Custom**: Any OAuth 2.1 compliant authorization server
+
+For detailed setup guides with specific providers, see the [OAuth Setup Guide](#oauth-setup-guide).
+
+#### Client Usage
+
+Clients must include a valid OAuth access token in the Authorization header:
+
+```bash
+# Make a request with OAuth token
+curl -X POST http://localhost:8080/mcp \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIs..." \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
+
+# Discover OAuth configuration
+curl http://localhost:8080/.well-known/oauth-protected-resource
+```
+
+#### Security Best Practices
+
+- **Always use HTTPS in production** - OAuth tokens should never be transmitted over unencrypted connections
+- **Validate audience claims** - Prevents token reuse across different services
+- **Use short-lived tokens** - Reduces risk if tokens are compromised
+- **Enable token introspection caching** - Reduces load on authorization server while maintaining security
+- **Monitor token errors** - Track failed authentication attempts for security insights
+
 ### Custom Authentication
 
 You can implement your own authentication provider by implementing the `AuthProvider` interface:
