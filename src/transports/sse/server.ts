@@ -167,6 +167,11 @@ export class SSEServerTransport extends AbstractTransport {
     }
 
     if (req.method === "POST" && url.pathname === this._config.messageEndpoint) {
+      if (this._config.auth?.endpoints?.messages !== false) {
+        const isAuthenticated = await this.handleAuthentication(req, res, "message")
+        if (!isAuthenticated) return
+      }
+
       // **Connection Validation (User Requested):**
       // Check if the 'sessionId' from the POST request URL query parameter
       // (which should contain a connectionId provided by the server via the 'endpoint' event)
@@ -176,11 +181,6 @@ export class SSEServerTransport extends AbstractTransport {
           // Use 403 Forbidden as the client is attempting an operation for an invalid/unknown connection
           res.writeHead(403).end("Invalid or inactive connection ID");
           return;
-      }
-
-      if (this._config.auth?.endpoints?.messages !== false) {
-        const isAuthenticated = await this.handleAuthentication(req, res, "message")
-        if (!isAuthenticated) return
       }
 
       await this.handlePostMessage(req, res)
@@ -222,8 +222,11 @@ export class SSEServerTransport extends AbstractTransport {
       if (isApiKey) {
         const provider = this._config.auth.provider as APIKeyAuthProvider
         res.setHeader("WWW-Authenticate", `ApiKey realm="MCP Server", header="${provider.getHeaderName()}"`)
+      } else if (this._config.auth.provider instanceof OAuthAuthProvider) {
+        const provider = this._config.auth.provider as OAuthAuthProvider
+        res.setHeader("WWW-Authenticate", provider.getWWWAuthenticateHeader('invalid_token', 'Missing or invalid authentication token'))
       }
-      
+
       res.writeHead(error.status).end(JSON.stringify({
         error: error.message,
         status: error.status,

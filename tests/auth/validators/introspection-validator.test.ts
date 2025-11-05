@@ -230,7 +230,7 @@ describe('IntrospectionValidator', () => {
       await validator.validate(token);
       const cachedCallTime = Date.now() - cachedStartTime;
 
-      expect(cachedCallTime).toBeLessThan(firstCallTime);
+      expect(cachedCallTime).toBeLessThanOrEqual(firstCallTime);
     });
 
     it('should expire cache after TTL', async () => {

@@ -165,13 +165,28 @@ export class HttpStreamTransport extends AbstractTransport {
         await transport.handleRequest(req, res, body);
         return;
       } else {
+        if (this._config.auth?.endpoints?.messages !== false) {
+          const isAuthenticated = await this.handleAuthentication(req, res, 'message');
+          if (!isAuthenticated) return;
+        }
+
         this.sendError(res, 400, -32000, 'Bad Request: No valid session ID provided');
         return;
       }
     } else if (!sessionId) {
+      if (this._config.auth?.endpoints?.messages !== false) {
+        const isAuthenticated = await this.handleAuthentication(req, res, 'message');
+        if (!isAuthenticated) return;
+      }
+
       this.sendError(res, 400, -32000, 'Bad Request: No valid session ID provided');
       return;
     } else {
+      if (this._config.auth?.endpoints?.messages !== false) {
+        const isAuthenticated = await this.handleAuthentication(req, res, 'message');
+        if (!isAuthenticated) return;
+      }
+
       this.sendError(res, 404, -32001, 'Session not found');
       return;
     }
@@ -247,6 +262,9 @@ export class HttpStreamTransport extends AbstractTransport {
       if (isApiKey) {
         const provider = this._config.auth.provider as APIKeyAuthProvider;
         res.setHeader('WWW-Authenticate', `ApiKey realm="MCP Server", header="${provider.getHeaderName()}"`);
+      } else if (this._config.auth.provider instanceof OAuthAuthProvider) {
+        const provider = this._config.auth.provider as OAuthAuthProvider;
+        res.setHeader('WWW-Authenticate', provider.getWWWAuthenticateHeader('invalid_token', 'Missing or invalid authentication token'));
       }
 
       res.writeHead(error.status).end(
