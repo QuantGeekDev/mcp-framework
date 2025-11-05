@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { logger } from '../../core/Logger.js';
 import { TokenClaims } from './jwt-validator.js';
 
@@ -157,8 +158,7 @@ export class IntrospectionValidator {
   }
 
   private hashToken(token: string): string {
-    const hash = Buffer.from(token.substring(token.length - 32)).toString('base64');
-    return hash;
+    return crypto.createHash('sha256').update(token).digest('hex');
   }
 
   private cleanupCache(): void {

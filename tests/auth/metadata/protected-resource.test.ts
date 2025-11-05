@@ -128,7 +128,7 @@ describe('ProtectedResourceMetadata', () => {
       });
 
       const res = createMockResponse();
-      let capturedHeaders: Record<string, string> = {};
+      const capturedHeaders: Record<string, string> = {};
       let capturedStatus = 0;
       let capturedBody = '';
 
