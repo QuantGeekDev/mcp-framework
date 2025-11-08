@@ -42,15 +42,11 @@ export type TextContent = {
   text: string;
 };
 
-export type ErrorContent = {
-  type: 'error';
-  text: string;
-};
-
-export type ToolContent = TextContent | ErrorContent | ImageContent;
+export type ToolContent = TextContent | ImageContent;
 
 export type ToolResponse = {
   content: ToolContent[];
+  isError?: boolean;
 };
 
 export interface ToolProtocol extends SDKTool {
@@ -451,7 +447,8 @@ export abstract class MCPTool<TInput extends Record<string, any> = any, TSchema 
 
   protected createErrorResponse(error: Error): ToolResponse {
     return {
-      content: [{ type: 'error', text: error.message }],
+      content: [{ type: 'text', text: error.message }],
+      isError: true,
     };
   }
 
@@ -479,19 +476,8 @@ export abstract class MCPTool<TInput extends Record<string, any> = any, TSchema 
     );
   }
 
-  private isErrorContent(data: unknown): data is ErrorContent {
-    return (
-      typeof data === 'object' &&
-      data !== null &&
-      'type' in data &&
-      data.type === 'error' &&
-      'text' in data &&
-      typeof (data as ErrorContent).text === 'string'
-    );
-  }
-
   private isValidContent(data: unknown): data is ToolContent {
-    return this.isImageContent(data) || this.isTextContent(data) || this.isErrorContent(data);
+    return this.isImageContent(data) || this.isTextContent(data);
   }
 
   protected async fetch<T>(url: string, init?: RequestInit): Promise<T> {
