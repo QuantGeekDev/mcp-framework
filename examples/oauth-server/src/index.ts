@@ -74,11 +74,7 @@ const server = new MCPServer({
     options: {
       port: Number(process.env.PORT) || 8080,
       auth: {
-        provider: oauthProvider,
-        endpoints: {
-          initialize: true,  // Require auth for session initialization
-          messages: true     // Require auth for MCP messages
-        }
+        provider: oauthProvider
       },
       // Enable CORS for web clients
       cors: {

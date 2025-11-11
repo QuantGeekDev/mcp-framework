@@ -7,12 +7,18 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc && node dist/index.js",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "proxy": "PORT=8080 node dist/proxy-server.js"
   },
   "dependencies": {
-    "mcp-framework": "^0.2.15",
-    "zod": "^3.22.4",
-    "dotenv": "^16.3.1"
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.5",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^5.1.0",
+    "http-proxy-middleware": "^3.0.5",
+    "mcp-framework": "file:../..",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

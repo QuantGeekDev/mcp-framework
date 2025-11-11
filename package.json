@@ -53,6 +53,7 @@
     "@types/prompts": "^2.4.9",
     "commander": "^12.1.0",
     "content-type": "^1.0.5",
+    "dotenv": "^17.2.3",
     "execa": "^9.5.2",
     "find-up": "^7.0.0",
     "jsonwebtoken": "^9.0.2",

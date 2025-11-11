@@ -1,20 +1,26 @@
-import { MCPTool, McpInput } from "mcp-framework";
+import { MCPTool } from "mcp-framework";
 import { z } from "zod";
-
-const SecureDataSchema = z.object({
-  query: z.string().describe("Data query to process"),
-});
 
 /**
  * Example tool that demonstrates OAuth authentication.
  * This tool is protected by OAuth and only accessible with a valid token.
  */
-class SecureDataTool extends MCPTool {
+interface SecureDataInput {
+  query: string;
+}
+
+class SecureDataTool extends MCPTool<SecureDataInput> {
   name = "secure_data";
   description = "Query secure data (requires OAuth authentication)";
-  schema = SecureDataSchema;
 
-  async execute(input: McpInput<this>, context?: any) {
+  protected schema = {
+    query: {
+      type: z.string(),
+      description: "Data query to process",
+    },
+  };
+
+  async execute(input: SecureDataInput, context?: any) {
     // Access token claims from authentication context
     const claims = context?.auth?.data;
 
