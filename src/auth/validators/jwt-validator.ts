@@ -107,10 +107,14 @@ export class JWTValidator {
     return new Promise((resolve, reject) => {
       const options: VerifyOptions = {
         algorithms: this.config.algorithms as jwt.Algorithm[],
-        audience: this.config.audience,
         issuer: this.config.issuer,
         complete: false,
       };
+
+      // Only validate audience if not set to wildcard
+      if (this.config.audience !== '*') {
+        options.audience = this.config.audience;
+      }
 
       jwt.verify(token, publicKey, options, (err, decoded) => {
         if (err) {
@@ -147,7 +151,8 @@ export class JWTValidator {
           return;
         }
 
-        if (!claims.aud) {
+        // Only require aud claim if not set to wildcard
+        if (this.config.audience !== '*' && !claims.aud) {
           reject(new Error('Token missing required claim: aud'));
           return;
         }
@@ -157,9 +162,11 @@ export class JWTValidator {
           return;
         }
 
-        logger.debug(
-          `Token claims validated - sub: ${claims.sub}, iss: ${claims.iss}, aud: ${Array.isArray(claims.aud) ? claims.aud.join(', ') : claims.aud}`
-        );
+        const audInfo = claims.aud
+          ? `aud: ${Array.isArray(claims.aud) ? claims.aud.join(', ') : claims.aud}`
+          : 'aud: <not present - wildcard mode>';
+
+        logger.debug(`Token claims validated - sub: ${claims.sub}, iss: ${claims.iss}, ${audInfo}`);
         resolve(claims);
       });
     });
