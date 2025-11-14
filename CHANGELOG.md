@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.16](https://github.com/QuantGeekDev/mcp-framework/compare/mcp-framework-v0.2.15...mcp-framework-v0.2.16) (2025-11-14)
+
+
+### Features
+
+* add cors for options ([2d7567e](https://github.com/QuantGeekDev/mcp-framework/commit/2d7567ed1d3d6ca22f025513e114d6a75322e365))
+* add OAuth 2.1 authentication support ([45b5999](https://github.com/QuantGeekDev/mcp-framework/commit/45b5999900b3d9b700a7cdcaf826c4aeca93cc75))
+* Add OAuth proxy server for Claude.ai integration ([cea912a](https://github.com/QuantGeekDev/mcp-framework/commit/cea912a7e576a6a3ef711d4f10f6bf466b34d257))
+* **auth:** enhance OAuth authentication for HttpStreamTransport and SSEServerTransport with comprehensive tests ([7aae521](https://github.com/QuantGeekDev/mcp-framework/commit/7aae521e5a13fc988ec04a40691ae2cefcdf4f69))
+* **auth:** implement shared authentication handler and OAuth metadata initialization for transport layers ([3ac5fc7](https://github.com/QuantGeekDev/mcp-framework/commit/3ac5fc74c7036c472e3045bd354b71237b658e7d))
+* **auth:** integrate OAuth authentication and introspection support ([607b83a](https://github.com/QuantGeekDev/mcp-framework/commit/607b83a64ce5b1027437d6a2913f04f597fa5f78))
+* OAuth 2.1 Authentication Support and Transport Layer Optimization ([61e3aba](https://github.com/QuantGeekDev/mcp-framework/commit/61e3aba8c8127a436638408b65b40b9f3a08581f))
+
+
+### Bug Fixes
+
+* **auth:** support wildcard audience validation for OAuth providers without aud claim ([bdcc89a](https://github.com/QuantGeekDev/mcp-framework/commit/bdcc89a93fead494283b76710db12f4bd696b8fd))
+* proper version ([ed04094](https://github.com/QuantGeekDev/mcp-framework/commit/ed04094ddc4e6bfd646f53a1a40a51ace90cefd1))
+
 ## [0.2.15](https://github.com/QuantGeekDev/mcp-framework/compare/mcp-framework-v0.2.14...mcp-framework-v0.2.15) (2025-06-18)
 
 

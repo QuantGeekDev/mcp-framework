@@ -1,6 +1,6 @@
 {
   "name": "mcp-framework",
-  "version": "0.2.15",
+  "version": "0.2.16",
   "description": "Framework for building Model Context Protocol (MCP) servers in Typescript",
   "type": "module",
   "author": "Alex Andru <alex@andru.codes>",
