@@ -58,6 +58,14 @@ export class HttpStreamTransport extends AbstractTransport {
         try {
           const url = new URL(req.url!, `http://${req.headers.host}`);
 
+          if (req.method === 'OPTIONS') {
+            this.setCorsHeaders(res, true);
+            res.writeHead(204).end();
+            return;
+          }
+
+          this.setCorsHeaders(res);
+
           if (req.method === 'GET' && url.pathname === '/.well-known/oauth-protected-resource') {
             if (this._oauthMetadata) {
               this._oauthMetadata.serve(res);
@@ -192,6 +200,20 @@ export class HttpStreamTransport extends AbstractTransport {
       });
       req.on('error', reject);
     });
+  }
+
+  private setCorsHeaders(res: ServerResponse, includeMaxAge: boolean = false): void {
+    if (!this._config.cors) return;
+
+    const cors = this._config.cors;
+    res.setHeader('Access-Control-Allow-Origin', cors.allowOrigin || '*');
+    res.setHeader('Access-Control-Allow-Methods', cors.allowMethods || 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', cors.allowHeaders || 'Content-Type, Authorization, Mcp-Session-Id');
+    res.setHeader('Access-Control-Expose-Headers', cors.exposeHeaders || 'Content-Type, Authorization, Mcp-Session-Id');
+    
+    if (includeMaxAge) {
+      res.setHeader('Access-Control-Max-Age', cors.maxAge || '86400');
+    }
   }
 
   private sendError(res: ServerResponse, status: number, code: number, message: string): void {
