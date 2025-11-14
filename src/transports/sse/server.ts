@@ -3,14 +3,14 @@ import { IncomingMessage, Server as HttpServer, ServerResponse, createServer } f
 import { JSONRPCMessage, ClientRequest } from "@modelcontextprotocol/sdk/types.js";
 import contentType from "content-type";
 import getRawBody from "raw-body";
-import { APIKeyAuthProvider } from "../../auth/providers/apikey.js";
-import { OAuthProvider } from "../../auth/providers/oauth.js";
-import { DEFAULT_AUTH_ERROR } from "../../auth/types.js";
 import { AbstractTransport } from "../base.js";
 import { DEFAULT_SSE_CONFIG, SSETransportConfig, SSETransportConfigInternal, DEFAULT_CORS_CONFIG, CORSConfig } from "./types.js";
 import { logger } from "../../core/Logger.js";
-import { getRequestHeader, setResponseHeaders } from "../../utils/headers.js";
+import { setResponseHeaders } from "../../utils/headers.js";
 import { PING_SSE_MESSAGE } from "../utils/ping-message.js";
+import { ProtectedResourceMetadata } from "../../auth/metadata/protected-resource.js";
+import { handleAuthentication } from "../utils/auth-handler.js";
+import { initializeOAuthMetadata } from "../utils/oauth-metadata.js";
 
 interface ExtendedIncomingMessage extends IncomingMessage {
   body?: ClientRequest;
@@ -29,6 +29,9 @@ export class SSEServerTransport extends AbstractTransport {
   private _connections: Map<string, { res: ServerResponse, intervalId: NodeJS.Timeout }> // Map<connectionId, { res: ServerResponse, intervalId: NodeJS.Timeout }>
   private _sessionId: string // Server instance ID
   private _config: SSETransportConfigInternal
+  private _oauthMetadata?: ProtectedResourceMetadata
+  private _corsHeaders: Record<string, string>
+  private _corsHeadersWithMaxAge: Record<string, string>
 
   constructor(config: SSETransportConfig = {}) {
     super()
@@ -38,6 +41,32 @@ export class SSEServerTransport extends AbstractTransport {
       ...DEFAULT_SSE_CONFIG,
       ...config
     }
+
+    // Initialize OAuth metadata if OAuth provider is configured
+    this._oauthMetadata = initializeOAuthMetadata(this._config.auth, 'SSE');
+
+    // Cache CORS headers for better performance
+    const corsConfig = {
+      allowOrigin: DEFAULT_CORS_CONFIG.allowOrigin,
+      allowMethods: DEFAULT_CORS_CONFIG.allowMethods,
+      allowHeaders: DEFAULT_CORS_CONFIG.allowHeaders,
+      exposeHeaders: DEFAULT_CORS_CONFIG.exposeHeaders,
+      maxAge: DEFAULT_CORS_CONFIG.maxAge,
+      ...this._config.cors
+    } as Required<CORSConfig>
+
+    this._corsHeaders = {
+      "Access-Control-Allow-Origin": corsConfig.allowOrigin,
+      "Access-Control-Allow-Methods": corsConfig.allowMethods,
+      "Access-Control-Allow-Headers": corsConfig.allowHeaders,
+      "Access-Control-Expose-Headers": corsConfig.exposeHeaders
+    }
+
+    this._corsHeadersWithMaxAge = {
+      ...this._corsHeaders,
+      "Access-Control-Max-Age": corsConfig.maxAge
+    }
+
     logger.debug(`SSE transport configured with: ${JSON.stringify({
       ...this._config,
       auth: this._config.auth ? {
@@ -48,27 +77,7 @@ export class SSEServerTransport extends AbstractTransport {
   }
 
   private getCorsHeaders(includeMaxAge: boolean = false): Record<string, string> {
-    const corsConfig = {
-      allowOrigin: DEFAULT_CORS_CONFIG.allowOrigin,
-      allowMethods: DEFAULT_CORS_CONFIG.allowMethods,
-      allowHeaders: DEFAULT_CORS_CONFIG.allowHeaders,
-      exposeHeaders: DEFAULT_CORS_CONFIG.exposeHeaders,
-      maxAge: DEFAULT_CORS_CONFIG.maxAge,
-      ...this._config.cors
-    } as Required<CORSConfig>
-
-    const headers: Record<string, string> = {
-      "Access-Control-Allow-Origin": corsConfig.allowOrigin,
-      "Access-Control-Allow-Methods": corsConfig.allowMethods,
-      "Access-Control-Allow-Headers": corsConfig.allowHeaders,
-      "Access-Control-Expose-Headers": corsConfig.exposeHeaders
-    }
-
-    if (includeMaxAge) {
-      headers["Access-Control-Max-Age"] = corsConfig.maxAge
-    }
-
-    return headers
+    return includeMaxAge ? this._corsHeadersWithMaxAge : this._corsHeaders
   }
 
   async start(): Promise<void> {
@@ -117,25 +126,18 @@ export class SSEServerTransport extends AbstractTransport {
     const url = new URL(req.url!, `http://${req.headers.host}`)
     const sessionId = url.searchParams.get("sessionId")
 
-    // OAuth Protected Resource Metadata endpoint (RFC9728)
-    // This MUST be publicly accessible per spec
     if (req.method === "GET" && url.pathname === "/.well-known/oauth-protected-resource") {
-      await this.handleProtectedResourceMetadata(req, res)
-      return
-    }
-
-    // OAuth callback endpoint
-    const oauthProvider = this._config.auth?.provider instanceof OAuthProvider ? 
-      this._config.auth.provider as OAuthProvider : null
-    
-    if (oauthProvider && req.method === "GET" && url.pathname === oauthProvider.getCallbackPath()) {
-      await this.handleOAuthCallback(req, res, url, oauthProvider)
-      return
+      if (this._oauthMetadata) {
+        this._oauthMetadata.serve(res);
+      } else {
+        res.writeHead(404).end("Not Found");
+      }
+      return;
     }
 
     if (req.method === "GET" && url.pathname === this._config.endpoint) {
       if (this._config.auth?.endpoints?.sse) {
-        const isAuthenticated = await this.handleAuthentication(req, res, "SSE connection")
+        const isAuthenticated = await handleAuthentication(req, res, this._config.auth, "SSE connection")
         if (!isAuthenticated) return
       }
 
@@ -165,6 +167,11 @@ export class SSEServerTransport extends AbstractTransport {
     }
 
     if (req.method === "POST" && url.pathname === this._config.messageEndpoint) {
+      if (this._config.auth?.endpoints?.messages !== false) {
+        const isAuthenticated = await handleAuthentication(req, res, this._config.auth, "message")
+        if (!isAuthenticated) return
+      }
+
       // **Connection Validation (User Requested):**
       // Check if the 'sessionId' from the POST request URL query parameter
       // (which should contain a connectionId provided by the server via the 'endpoint' event)
@@ -176,191 +183,11 @@ export class SSEServerTransport extends AbstractTransport {
           return;
       }
 
-      if (this._config.auth?.endpoints?.messages !== false) {
-        const isAuthenticated = await this.handleAuthentication(req, res, "message")
-        if (!isAuthenticated) return
-      }
-
       await this.handlePostMessage(req, res)
       return
     }
 
     res.writeHead(404).end("Not Found")
-  }
-
-  private async handleProtectedResourceMetadata(req: ExtendedIncomingMessage, res: ServerResponse): Promise<void> {
-    try {
-      const oauthProvider = this._config.auth?.provider instanceof OAuthProvider ? 
-        this._config.auth.provider as OAuthProvider : null
-
-      if (!oauthProvider) {
-        // If no OAuth provider is configured, return empty response or error
-        logger.debug("Protected Resource Metadata requested but no OAuth provider configured")
-        res.writeHead(404).end(JSON.stringify({
-          error: "OAuth not configured"
-        }))
-        return
-      }
-
-      const metadata = oauthProvider.getProtectedResourceMetadata()
-      
-      res.writeHead(200, {
-        'Content-Type': 'application/json'
-      })
-      res.end(JSON.stringify(metadata))
-      
-      logger.debug("Served Protected Resource Metadata")
-    } catch (error) {
-      logger.error(`Error serving Protected Resource Metadata: ${error}`)
-      res.writeHead(500).end(JSON.stringify({
-        error: "Internal server error"
-      }))
-    }
-  }
-
-  private async handleOAuthCallback(req: ExtendedIncomingMessage, res: ServerResponse, url: URL, oauthProvider: OAuthProvider): Promise<void> {
-    try {
-      const code = url.searchParams.get('code')
-      const state = url.searchParams.get('state')
-      const error = url.searchParams.get('error')
-      const errorDescription = url.searchParams.get('error_description')
-
-      if (error) {
-        const errorObj = new Error(errorDescription || error)
-        logger.error(`OAuth callback error: ${error} - ${errorDescription}`)
-        
-        if (this._config.oauth?.onError) {
-          await this._config.oauth.onError(errorObj, state || undefined)
-        }
-
-        res.writeHead(400, { 'Content-Type': 'text/html' })
-        res.end(`
-          <html>
-            <body>
-              <h1>Authorization Failed</h1>
-              <p>Error: ${error}</p>
-              <p>${errorDescription || ''}</p>
-            </body>
-          </html>
-        `)
-        return
-      }
-
-      if (!code || !state) {
-        logger.error("OAuth callback missing code or state")
-        res.writeHead(400).end("Missing code or state parameter")
-        return
-      }
-
-      // Build the full redirect URI for token exchange
-      const protocol = req.headers['x-forwarded-proto'] || 'http'
-      const host = req.headers.host
-      const redirectUri = `${protocol}://${host}${url.pathname}`
-
-      logger.debug(`Exchanging authorization code for token with redirect_uri: ${redirectUri}`)
-
-      const tokenResult = await oauthProvider.handleCallback(code, state, redirectUri)
-
-      if (this._config.oauth?.onCallback) {
-        await this._config.oauth.onCallback({
-          accessToken: tokenResult.accessToken,
-          refreshToken: tokenResult.refreshToken,
-          expiresIn: tokenResult.expiresIn,
-          state
-        })
-      }
-
-      logger.info("OAuth callback successful")
-
-      res.writeHead(200, { 'Content-Type': 'text/html' })
-      res.end(`
-        <html>
-          <body>
-            <h1>Authorization Successful</h1>
-            <p>You can now close this window and return to your application.</p>
-            <script>
-              // Try to close the window (may not work in all browsers)
-              setTimeout(() => window.close(), 2000);
-            </script>
-          </body>
-        </html>
-      `)
-    } catch (error) {
-      logger.error(`Error handling OAuth callback: ${error}`)
-      
-      if (this._config.oauth?.onError) {
-        await this._config.oauth.onError(error as Error, url.searchParams.get('state') || undefined)
-      }
-
-      res.writeHead(500, { 'Content-Type': 'text/html' })
-      res.end(`
-        <html>
-          <body>
-            <h1>Authorization Error</h1>
-            <p>${(error as Error).message}</p>
-          </body>
-        </html>
-      `)
-    }
-  }
-
-  private async handleAuthentication(req: ExtendedIncomingMessage, res: ServerResponse, context: string): Promise<boolean> {
-    if (!this._config.auth?.provider) {
-      return true
-    }
-
-    const isApiKey = this._config.auth.provider instanceof APIKeyAuthProvider
-    const isOAuth = this._config.auth.provider instanceof OAuthProvider
-
-    if (isApiKey) {
-      const provider = this._config.auth.provider as APIKeyAuthProvider
-      const headerValue = getRequestHeader(req.headers, provider.getHeaderName())
-      
-      if (!headerValue) {
-        const error = provider.getAuthError?.() || DEFAULT_AUTH_ERROR
-        res.setHeader("WWW-Authenticate", `ApiKey realm="MCP Server", header="${provider.getHeaderName()}"`)
-        res.writeHead(error.status).end(JSON.stringify({
-          error: error.message,
-          status: error.status,
-          type: "authentication_error"
-        }))
-        return false
-      }
-    }
-
-    const authResult = await this._config.auth.provider.authenticate(req)
-    if (!authResult) {
-      const error = this._config.auth.provider.getAuthError?.() || DEFAULT_AUTH_ERROR
-      logger.warn(`Authentication failed for ${context}:`)
-      logger.warn(`- Client IP: ${req.socket.remoteAddress}`)
-      logger.warn(`- Error: ${error.message}`)
-
-      // Set appropriate WWW-Authenticate header based on provider type
-      if (isApiKey) {
-        const provider = this._config.auth.provider as APIKeyAuthProvider
-        res.setHeader("WWW-Authenticate", `ApiKey realm="MCP Server", header="${provider.getHeaderName()}"`)
-      } else if (isOAuth) {
-        const errorWithHeaders = error as { status: number; message: string; headers?: Record<string, string> }
-        if (errorWithHeaders.headers) {
-          // Use custom headers from OAuth provider (includes WWW-Authenticate with resource metadata)
-          Object.entries(errorWithHeaders.headers).forEach(([key, value]) => {
-            res.setHeader(key, value)
-          })
-        }
-      }
-      
-      res.writeHead(error.status).end(JSON.stringify({
-        error: error.message,
-        status: error.status,
-        type: "authentication_error"
-      }))
-      return false
-    }
-
-    logger.info(`Authentication successful for ${context}:`)
-    logger.info(`- Client IP: ${req.socket.remoteAddress}`)
-    logger.info(`- Auth Type: ${this._config.auth.provider.constructor.name}`)
-    return true
   }
 
   private setupSSEConnection(res: ServerResponse, connectionId: string): void {

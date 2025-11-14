@@ -14,6 +14,7 @@ export default {
         tsconfig: {
           module: 'Node16',
           moduleResolution: 'Node16',
+          rootDir: '.',
         },
       },
     ],

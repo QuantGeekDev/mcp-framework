@@ -22,6 +22,7 @@ program
   .option('--port <number>', 'specify HTTP port (only valid with --http)', (val) =>
     parseInt(val, 10)
   )
+  .option('--oauth', 'configure OAuth 2.1 authentication (requires --http)')
   .option('--no-install', 'skip npm install and build steps')
   .option('--no-example', 'skip creating example tool')
   .action(createProject);
