@@ -5,6 +5,9 @@ import { JSONRPCMessage, isInitializeRequest } from '@modelcontextprotocol/sdk/t
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { HttpStreamTransportConfig } from './types.js';
 import { logger } from '../../core/Logger.js';
+import { ProtectedResourceMetadata } from '../../auth/metadata/protected-resource.js';
+import { handleAuthentication } from '../utils/auth-handler.js';
+import { initializeOAuthMetadata } from '../utils/oauth-metadata.js';
 
 export class HttpStreamTransport extends AbstractTransport {
   readonly type = 'http-stream';
@@ -13,15 +16,21 @@ export class HttpStreamTransport extends AbstractTransport {
   private _server?: HttpServer;
   private _endpoint: string;
   private _enableJsonResponse: boolean = false;
+  private _config: HttpStreamTransportConfig;
+  private _oauthMetadata?: ProtectedResourceMetadata;
 
   private _transports: { [sessionId: string]: StreamableHTTPServerTransport } = {};
 
   constructor(config: HttpStreamTransportConfig = {}) {
     super();
 
+    this._config = config;
     this._port = config.port || 8080;
     this._endpoint = config.endpoint || '/mcp';
     this._enableJsonResponse = config.responseMode === 'batch';
+
+    // Initialize OAuth metadata if OAuth provider is configured
+    this._oauthMetadata = initializeOAuthMetadata(this._config.auth, 'HTTP Stream');
 
     logger.debug(
       `HttpStreamTransport configured with: ${JSON.stringify({
@@ -30,7 +39,10 @@ export class HttpStreamTransport extends AbstractTransport {
         responseMode: config.responseMode,
         batchTimeout: config.batchTimeout,
         maxMessageSize: config.maxMessageSize,
-        auth: config.auth ? true : false,
+        auth: config.auth ? {
+          provider: config.auth.provider.constructor.name,
+          endpoints: config.auth.endpoints
+        } : undefined,
         cors: config.cors ? true : false,
       })}`
     );
@@ -45,6 +57,15 @@ export class HttpStreamTransport extends AbstractTransport {
       this._server = createServer(async (req, res) => {
         try {
           const url = new URL(req.url!, `http://${req.headers.host}`);
+
+          if (req.method === 'GET' && url.pathname === '/.well-known/oauth-protected-resource') {
+            if (this._oauthMetadata) {
+              this._oauthMetadata.serve(res);
+            } else {
+              res.writeHead(404).end('Not Found');
+            }
+            return;
+          }
 
           if (url.pathname === this._endpoint) {
             await this.handleMcpRequest(req, res);
@@ -85,59 +106,73 @@ export class HttpStreamTransport extends AbstractTransport {
     const sessionId = req.headers['mcp-session-id'] as string | undefined;
     let transport: StreamableHTTPServerTransport;
 
+    // Determine if this is an initialize request (needs body parsing)
+    const body = req.method === 'POST' ? await this.readRequestBody(req) : null;
+    const isInitialize = !sessionId && body && isInitializeRequest(body);
+
+    // Perform authentication check once at the beginning
+    const authEndpoint = isInitialize ? 'sse' : 'messages';
+    if (this._config.auth?.endpoints?.[authEndpoint] !== false) {
+      const isAuthenticated = await handleAuthentication(
+        req,
+        res,
+        this._config.auth,
+        isInitialize ? 'initialize' : 'message'
+      );
+      if (!isAuthenticated) return;
+    }
+
+    // Handle different request scenarios
     if (sessionId && this._transports[sessionId]) {
+      // Existing session
       transport = this._transports[sessionId];
       logger.debug(`Reusing existing session: ${sessionId}`);
-    } else if (!sessionId && req.method === 'POST') {
-      const body = await this.readRequestBody(req);
+    } else if (isInitialize) {
+      // New session initialization
+      logger.info('Creating new session for initialization request');
 
-      if (isInitializeRequest(body)) {
-        logger.info('Creating new session for initialization request');
+      transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        onsessioninitialized: (sessionId: string) => {
+          logger.info(`Session initialized: ${sessionId}`);
+          this._transports[sessionId] = transport;
+        },
+        enableJsonResponse: this._enableJsonResponse,
+      });
 
-        transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: () => randomUUID(),
-          onsessioninitialized: (sessionId: string) => {
-            logger.info(`Session initialized: ${sessionId}`);
-            this._transports[sessionId] = transport;
-          },
-          enableJsonResponse: this._enableJsonResponse,
-        });
+      transport.onclose = () => {
+        if (transport.sessionId) {
+          logger.info(`Transport closed for session: ${transport.sessionId}`);
+          delete this._transports[transport.sessionId];
+        }
+      };
 
-        transport.onclose = () => {
-          if (transport.sessionId) {
-            logger.info(`Transport closed for session: ${transport.sessionId}`);
-            delete this._transports[transport.sessionId];
-          }
-        };
+      transport.onerror = (error) => {
+        logger.error(`Transport error for session: ${error}`);
+        if (transport.sessionId) {
+          delete this._transports[transport.sessionId];
+        }
+      };
 
-        transport.onerror = (error) => {
-          logger.error(`Transport error for session: ${error}`);
-          if (transport.sessionId) {
-            delete this._transports[transport.sessionId];
-          }
-        };
+      transport.onmessage = async (message: JSONRPCMessage) => {
+        if (this._onmessage) {
+          await this._onmessage(message);
+        }
+      };
 
-        transport.onmessage = async (message: JSONRPCMessage) => {
-          if (this._onmessage) {
-            await this._onmessage(message);
-          }
-        };
-
-        await transport.handleRequest(req, res, body);
-        return;
-      } else {
-        this.sendError(res, 400, -32000, 'Bad Request: No valid session ID provided');
-        return;
-      }
+      await transport.handleRequest(req, res, body);
+      return;
     } else if (!sessionId) {
+      // No session ID and not an initialize request
       this.sendError(res, 400, -32000, 'Bad Request: No valid session ID provided');
       return;
     } else {
+      // Session ID provided but not found
       this.sendError(res, 404, -32001, 'Session not found');
       return;
     }
 
-    const body = await this.readRequestBody(req);
+    // Existing session - handle request
     await transport.handleRequest(req, res, body);
   }
 
