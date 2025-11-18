@@ -46,6 +46,10 @@
     "context",
     "protocol"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/QuantGeekDev/mcp-framework.git"
+  },
   "peerDependencies": {
     "@modelcontextprotocol/sdk": "^1.11.0"
   },
