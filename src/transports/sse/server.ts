@@ -11,6 +11,8 @@ import { PING_SSE_MESSAGE } from "../utils/ping-message.js";
 import { ProtectedResourceMetadata } from "../../auth/metadata/protected-resource.js";
 import { handleAuthentication } from "../utils/auth-handler.js";
 import { initializeOAuthMetadata } from "../utils/oauth-metadata.js";
+import { requestContext, RequestContextData } from "../../utils/requestContext.js";
+import { AuthResult } from "../../auth/types.js";
 
 interface ExtendedIncomingMessage extends IncomingMessage {
   body?: ClientRequest;
@@ -167,9 +169,12 @@ export class SSEServerTransport extends AbstractTransport {
     }
 
     if (req.method === "POST" && url.pathname === this._config.messageEndpoint) {
+      let authData: RequestContextData = {};
+
       if (this._config.auth?.endpoints?.messages !== false) {
-        const isAuthenticated = await handleAuthentication(req, res, this._config.auth, "message")
-        if (!isAuthenticated) return
+        const authResult = await handleAuthentication(req, res, this._config.auth, "message")
+        if (!authResult) return
+        authData = (authResult as AuthResult).data as RequestContextData || {};
       }
 
       // **Connection Validation (User Requested):**
@@ -183,7 +188,7 @@ export class SSEServerTransport extends AbstractTransport {
           return;
       }
 
-      await this.handlePostMessage(req, res)
+      await this.handlePostMessage(req, res, authData)
       return
     }
 
@@ -250,7 +255,7 @@ export class SSEServerTransport extends AbstractTransport {
     logger.info(`SSE connection established successfully: ${connectionId}`);
   }
 
-  private async handlePostMessage(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  private async handlePostMessage(req: IncomingMessage, res: ServerResponse, authData: RequestContextData = {}): Promise<void> {
     // Check if *any* connection is active, not just the old single _sseResponse
     if (this._connections.size === 0) {
         logger.warn(`Rejecting message: no active SSE connections for server session ${this._sessionId}`);
@@ -301,7 +306,9 @@ export class SSEServerTransport extends AbstractTransport {
         throw new Error("No message handler registered")
       }
 
-      await this._onmessage(rpcMessage)
+      await requestContext.run(authData, async () => {
+        await this._onmessage!(rpcMessage)
+      })
       
       res.writeHead(202).end("Accepted")
       

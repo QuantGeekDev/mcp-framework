@@ -81,7 +81,7 @@ export class OAuthAuthProvider implements AuthProvider {
       logger.debug(`Token claims - sub: ${claims.sub}, scope: ${claims.scope || 'N/A'}`);
 
       return {
-        data: claims,
+        data: { ...claims, token },
       };
     } catch (error) {
       if (error instanceof Error) {
