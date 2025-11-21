@@ -1,5 +1,5 @@
 import { IncomingMessage, ServerResponse } from 'node:http';
-import { AuthConfig } from '../../auth/types.js';
+import { AuthConfig, AuthResult } from '../../auth/types.js';
 import { APIKeyAuthProvider } from '../../auth/providers/apikey.js';
 import { OAuthAuthProvider } from '../../auth/providers/oauth.js';
 import { DEFAULT_AUTH_ERROR } from '../../auth/types.js';
@@ -14,16 +14,16 @@ import { logger } from '../../core/Logger.js';
  * @param res - HTTP response object
  * @param authConfig - Authentication configuration from transport
  * @param context - Description of the context (e.g., "initialize", "message", "SSE connection")
- * @returns True if authenticated, false if authentication failed (response already sent)
+ * @returns AuthResult if authenticated, null if authentication failed (response already sent)
  */
 export async function handleAuthentication(
   req: IncomingMessage,
   res: ServerResponse,
   authConfig: AuthConfig | undefined,
   context: string
-): Promise<boolean> {
+): Promise<AuthResult | null> {
   if (!authConfig?.provider) {
-    return true;
+    return { data: {} };
   }
 
   const isApiKey = authConfig.provider instanceof APIKeyAuthProvider;
@@ -43,7 +43,7 @@ export async function handleAuthentication(
           type: 'authentication_error',
         })
       );
-      return false;
+      return null;
     }
   }
 
@@ -72,12 +72,16 @@ export async function handleAuthentication(
         type: 'authentication_error',
       })
     );
-    return false;
+    return null;
   }
 
   // Authentication successful
   logger.info(`Authentication successful for ${context}:`);
   logger.info(`- Client IP: ${req.socket.remoteAddress}`);
   logger.info(`- Auth Type: ${authConfig.provider.constructor.name}`);
-  return true;
+  
+  if (typeof authResult === 'boolean') {
+    return { data: {} };
+  }
+  return authResult;
 }

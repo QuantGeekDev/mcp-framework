@@ -8,6 +8,8 @@ import { logger } from '../../core/Logger.js';
 import { ProtectedResourceMetadata } from '../../auth/metadata/protected-resource.js';
 import { handleAuthentication } from '../utils/auth-handler.js';
 import { initializeOAuthMetadata } from '../utils/oauth-metadata.js';
+import { requestContext, RequestContextData } from '../../utils/requestContext.js';
+import { AuthResult } from '../../auth/types.js';
 
 export class HttpStreamTransport extends AbstractTransport {
   readonly type = 'http-stream';
@@ -120,14 +122,17 @@ export class HttpStreamTransport extends AbstractTransport {
 
     // Perform authentication check once at the beginning
     const authEndpoint = isInitialize ? 'sse' : 'messages';
+    let authData: RequestContextData = {};
+
     if (this._config.auth?.endpoints?.[authEndpoint] !== false) {
-      const isAuthenticated = await handleAuthentication(
+      const authResult = await handleAuthentication(
         req,
         res,
         this._config.auth,
         isInitialize ? 'initialize' : 'message'
       );
-      if (!isAuthenticated) return;
+      if (!authResult) return;
+      authData = (authResult as AuthResult).data as RequestContextData || {};
     }
 
     // Handle different request scenarios
@@ -168,7 +173,9 @@ export class HttpStreamTransport extends AbstractTransport {
         }
       };
 
-      await transport.handleRequest(req, res, body);
+      await requestContext.run(authData, async () => {
+        await transport.handleRequest(req, res, body);
+      });
       return;
     } else if (!sessionId) {
       // No session ID and not an initialize request
@@ -181,7 +188,9 @@ export class HttpStreamTransport extends AbstractTransport {
     }
 
     // Existing session - handle request
-    await transport.handleRequest(req, res, body);
+    await requestContext.run(authData, async () => {
+      await transport.handleRequest(req, res, body);
+    });
   }
 
   private async readRequestBody(req: IncomingMessage): Promise<any> {

@@ -112,9 +112,11 @@ export class JWTValidator {
       };
 
       // Only validate audience if not set to wildcard
-      if (this.config.audience !== '*') {
-        options.audience = this.config.audience;
-      }
+      // For Cognito Access Tokens, 'aud' is missing but 'client_id' is present.
+      // We disable the library's strict check and handle it manually in the callback.
+      // if (this.config.audience !== '*') {
+      //   options.audience = this.config.audience;
+      // }
 
       jwt.verify(token, publicKey, options, (err, decoded) => {
         if (err) {
@@ -151,10 +153,32 @@ export class JWTValidator {
           return;
         }
 
-        // Only require aud claim if not set to wildcard
-        if (this.config.audience !== '*' && !claims.aud) {
-          reject(new Error('Token missing required claim: aud'));
-          return;
+        // Only require aud/client_id claim if not set to wildcard
+        if (this.config.audience !== '*') {
+          const aud = claims.aud;
+          const clientId = claims.client_id as string | undefined;
+          const expectedAudience = this.config.audience;
+
+          let isValidAudience = false;
+
+          // Check 'aud' claim (ID Tokens)
+          if (aud) {
+            if (Array.isArray(aud)) {
+              if (aud.includes(expectedAudience)) isValidAudience = true;
+            } else {
+              if (aud === expectedAudience) isValidAudience = true;
+            }
+          }
+          
+          // Check 'client_id' claim (Access Tokens)
+          if (!isValidAudience && clientId) {
+            if (clientId === expectedAudience) isValidAudience = true;
+          }
+
+          if (!isValidAudience) {
+             reject(new Error(`Token audience mismatch. Expected ${expectedAudience}, got aud: ${aud}, client_id: ${clientId}`));
+             return;
+          }
         }
 
         if (!claims.exp) {
