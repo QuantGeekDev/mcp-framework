@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.17](https://github.com/QuantGeekDev/mcp-framework/compare/mcp-framework-v0.2.16...mcp-framework-v0.2.17) (2025-11-21)
+
+
+### Features
+
+* add auth context ([ff8f81e](https://github.com/QuantGeekDev/mcp-framework/commit/ff8f81e34de134e7f6b8f9270f62eec687b4b61e))
+* add request context for auth ([182a019](https://github.com/QuantGeekDev/mcp-framework/commit/182a01978fb4fb3e0a9435fad45379b52f6f9094))
+* fallback tokens ([f6fcf53](https://github.com/QuantGeekDev/mcp-framework/commit/f6fcf53969eea6760581d6e6aebc36d5cff91c5c))
+
 ## [0.2.16](https://github.com/QuantGeekDev/mcp-framework/compare/mcp-framework-v0.2.15...mcp-framework-v0.2.16) (2025-11-14)
 
 
