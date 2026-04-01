@@ -39,7 +39,8 @@ program
     new Command('tool')
       .description('Add a new tool')
       .argument('[name]', 'tool name')
-      .action(addTool)
+      .option('--react', 'generate a React-based tool with interactive UI')
+      .action((name, opts) => addTool(name, opts))
   )
   .addCommand(
     new Command('prompt')
@@ -57,7 +58,8 @@ program
     new Command('app')
       .description('Add a new app with interactive UI')
       .argument('[name]', 'app name')
-      .action(addApp)
+      .option('--react', 'generate a React-based app view')
+      .action((name, opts) => addApp(name, opts))
   );
 
 program.addCommand(validateCommand);

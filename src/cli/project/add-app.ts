@@ -3,8 +3,16 @@ import { join } from 'path';
 import prompts from 'prompts';
 import { validateMCPProject } from '../utils/validate-project.js';
 import { toPascalCase } from '../utils/string-utils.js';
+import {
+  generateReactHtmlShell,
+  generateReactApp,
+  generateReactStyles,
+  generateViteConfig,
+  generateTsconfigApp,
+  getReactInstallInstructions,
+} from '../templates/react-app.js';
 
-export async function addApp(name?: string) {
+export async function addApp(name?: string, options?: { react?: boolean }) {
   await validateMCPProject();
 
   let appName = name;
@@ -33,6 +41,7 @@ export async function addApp(name?: string) {
     throw new Error('App name is required');
   }
 
+  const useReact = options?.react ?? false;
   const className = toPascalCase(appName);
   const fileName = `${className}App.ts`;
   const appsDir = join(process.cwd(), 'src/apps');
@@ -42,22 +51,83 @@ export async function addApp(name?: string) {
     await mkdir(appsDir, { recursive: true });
     await mkdir(viewsDir, { recursive: true });
 
-    const appContent = generateAppClass(appName, className);
-    const htmlContent = generateHtmlView(appName, className);
+    if (useReact) {
+      await writeFile(join(appsDir, fileName), generateReactAppClass(appName, className));
+      await writeFile(join(viewsDir, 'index.html'), generateReactHtmlShell(appName));
+      await writeFile(join(viewsDir, 'App.tsx'), generateReactApp(appName, className));
+      await writeFile(join(viewsDir, 'styles.css'), generateReactStyles());
+      await writeFile(join(viewsDir, 'vite.config.ts'), generateViteConfig());
+      await writeFile(join(viewsDir, 'tsconfig.json'), generateTsconfigApp());
 
-    await writeFile(join(appsDir, fileName), appContent);
-    await writeFile(join(viewsDir, 'index.html'), htmlContent);
+      console.log(`React app ${appName} created successfully:`);
+      console.log(`  - App class:    src/apps/${fileName}`);
+      console.log(`  - React entry:  src/app-views/${appName}/App.tsx`);
+      console.log(`  - Styles:       src/app-views/${appName}/styles.css`);
+      console.log(`  - Vite config:  src/app-views/${appName}/vite.config.ts`);
+      console.log(getReactInstallInstructions().replace(/<name>/g, appName));
+    } else {
+      await writeFile(join(appsDir, fileName), generateVanillaAppClass(appName, className));
+      await writeFile(join(viewsDir, 'index.html'), generateVanillaHtmlView(appName, className));
 
-    console.log(`App ${appName} created successfully:`);
-    console.log(`  - App class: src/apps/${fileName}`);
-    console.log(`  - HTML view: src/app-views/${appName}/index.html`);
+      console.log(`App ${appName} created successfully:`);
+      console.log(`  - App class: src/apps/${fileName}`);
+      console.log(`  - HTML view: src/app-views/${appName}/index.html`);
+    }
   } catch (error) {
     console.error('Error creating app:', error);
     process.exit(1);
   }
 }
 
-function generateAppClass(appName: string, className: string): string {
+// ── React App Class (Mode A) ──────────────────────────────────────────────────
+
+function generateReactAppClass(appName: string, className: string): string {
+  return `import { MCPApp } from "mcp-framework";
+import { z } from "zod";
+import { readFileSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+class ${className}App extends MCPApp {
+  name = "${appName}";
+
+  ui = {
+    resourceUri: "ui://${appName}/view",
+    resourceName: "${className}",
+    resourceDescription: "${className} interactive view",
+  };
+
+  getContent() {
+    // Reads the Vite-bundled single HTML file
+    return readFileSync(
+      join(__dirname, "../../app-views/${appName}/dist/index.html"),
+      "utf-8"
+    );
+  }
+
+  tools = [
+    {
+      name: "${appName}_show",
+      description: "Display the ${className} view",
+      schema: z.object({
+        query: z.string().describe("Input query"),
+      }),
+      execute: async (input: { query: string }) => {
+        return { result: \`Processed: \${input.query}\` };
+      },
+    },
+  ];
+}
+
+export default ${className}App;
+`;
+}
+
+// ── Vanilla Templates (unchanged) ─────────────────────────────────────────────
+
+function generateVanillaAppClass(appName: string, className: string): string {
   return `import { MCPApp } from "mcp-framework";
 import { z } from "zod";
 import { readFileSync } from "fs";
@@ -100,7 +170,7 @@ export default ${className}App;
 `;
 }
 
-function generateHtmlView(appName: string, className: string): string {
+function generateVanillaHtmlView(appName: string, className: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -151,7 +221,6 @@ function generateHtmlView(appName: string, className: string): string {
       protocolVersion: "2026-01-26",
     });
 
-    // Apply host theme
     const vars = init.hostContext?.styles?.variables;
     if (vars) {
       for (const [key, value] of Object.entries(vars)) {
@@ -159,7 +228,6 @@ function generateHtmlView(appName: string, className: string): string {
       }
     }
 
-    // Handle tool input
     onNotification("ui/notifications/tool-input", (params) => {
       document.getElementById("app").innerHTML =
         "<h2>${className}</h2><pre>" +
@@ -167,7 +235,6 @@ function generateHtmlView(appName: string, className: string): string {
         "</pre>";
     });
 
-    // Handle tool result
     onNotification("ui/notifications/tool-result", (params) => {
       const text = params.content?.[0]?.text ?? JSON.stringify(params);
       document.getElementById("app").innerHTML =
