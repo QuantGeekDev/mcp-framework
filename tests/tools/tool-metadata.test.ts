@@ -42,6 +42,22 @@ class ToolWithEmptyIcons extends MCPTool {
   async execute() { return 'ok'; }
 }
 
+class ToolWithPricing extends MCPTool {
+  name = 'priced_tool';
+  description = 'A tool with pricing';
+  pricing = { perCall: 0.001, freeTier: 100 };
+  schema = schema;
+  async execute() { return 'ok'; }
+}
+
+class ToolWithPartialPricing extends MCPTool {
+  name = 'partial_priced_tool';
+  description = 'A tool with partial pricing';
+  pricing = { perCall: 0.005 };
+  schema = schema;
+  async execute() { return 'ok'; }
+}
+
 describe('Tool Metadata', () => {
   describe('title', () => {
     it('should include title in toolDefinition when set', () => {
@@ -70,6 +86,23 @@ describe('Tool Metadata', () => {
     it('should not include icons key when not set', () => {
       const tool = new BasicTool();
       expect('icons' in tool.toolDefinition).toBe(false);
+    });
+  });
+
+  describe('pricing', () => {
+    it('should include pricing in toolDefinition when set', () => {
+      const tool = new ToolWithPricing();
+      expect(tool.toolDefinition.pricing).toEqual({ perCall: 0.001, freeTier: 100 });
+    });
+
+    it('should include partial pricing in toolDefinition', () => {
+      const tool = new ToolWithPartialPricing();
+      expect(tool.toolDefinition.pricing).toEqual({ perCall: 0.005 });
+    });
+
+    it('should not include pricing key when not set', () => {
+      const tool = new BasicTool();
+      expect('pricing' in tool.toolDefinition).toBe(false);
     });
   });
 });

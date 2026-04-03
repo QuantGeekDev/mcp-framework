@@ -115,6 +115,11 @@ export interface ToolExecution {
   taskSupport?: 'forbidden' | 'optional' | 'required';
 }
 
+export interface ToolPricing {
+  perCall?: number;
+  freeTier?: number;
+}
+
 export interface ContentAnnotations {
   audience?: ('user' | 'assistant')[];
   priority?: number;
@@ -177,6 +182,7 @@ export interface ToolProtocol extends SDKTool {
     icons?: MCPIcon[];
     annotations?: ToolAnnotations;
     execution?: ToolExecution;
+    pricing?: ToolPricing;
     outputSchema?: Record<string, unknown>;
     _meta?: Record<string, unknown>;
   };
@@ -227,6 +233,7 @@ export abstract class MCPTool<TInput extends Record<string, any> = any, TSchema 
   icons?: MCPIcon[];
   annotations?: ToolAnnotations;
   execution?: ToolExecution;
+  pricing?: ToolPricing;
   protected outputSchemaShape?: z.ZodObject<any>;
   [key: string]: unknown;
 
@@ -861,6 +868,7 @@ export abstract class MCPTool<TInput extends Record<string, any> = any, TSchema 
       ...(this.icons && this.icons.length > 0 && { icons: this.icons }),
       ...(this.annotations && Object.keys(this.annotations).length > 0 && { annotations: this.annotations }),
       ...(this.execution && Object.keys(this.execution).length > 0 && { execution: this.execution }),
+      ...(this.pricing && Object.keys(this.pricing).length > 0 && { pricing: this.pricing }),
       ...(this.outputSchemaShape && { outputSchema: this.generateOutputSchema() }),
       ...(this.app && {
         _meta: {
