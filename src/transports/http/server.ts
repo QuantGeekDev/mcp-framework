@@ -136,7 +136,21 @@ export class HttpStreamTransport extends AbstractTransport {
     let transport: StreamableHTTPServerTransport;
 
     // Determine if this is an initialize request (needs body parsing)
-    const body = req.method === 'POST' ? await this.readRequestBody(req) : null;
+    let body: any = null;
+    if (req.method === 'POST') {
+      try {
+        body = await this.readRequestBody(req);
+      } catch (error: any) {
+        if (error.message === 'Request body too large') {
+          res.writeHead(413, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32600, message: 'Request body too large' }, id: null }));
+          return;
+        }
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32700, message: 'Parse error' }, id: null }));
+        return;
+      }
+    }
     const isInitialize = !sessionId && body && isInitializeRequest(body);
 
     // Perform authentication check once at the beginning
@@ -221,10 +235,19 @@ export class HttpStreamTransport extends AbstractTransport {
     });
   }
 
+  private static readonly MAX_BODY_SIZE = 4 * 1024 * 1024; // 4MB
+
   private async readRequestBody(req: IncomingMessage): Promise<any> {
     return new Promise((resolve, reject) => {
       let body = '';
+      let size = 0;
       req.on('data', (chunk) => {
+        size += chunk.length;
+        if (size > HttpServerTransport.MAX_BODY_SIZE) {
+          req.destroy();
+          reject(new Error('Request body too large'));
+          return;
+        }
         body += chunk.toString();
       });
       req.on('end', () => {
