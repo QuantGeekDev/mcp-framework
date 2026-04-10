@@ -3,6 +3,7 @@ export * from "./providers/jwt.js";
 export * from "./providers/apikey.js";
 export * from "./providers/oauth.js";
 export * from "./providers/satp.js";
+export * from "./providers/agentpass.js";
 
 export type { AuthProvider, AuthConfig, AuthResult } from "./types.js";
 export type { JWTConfig } from "./providers/jwt.js";
