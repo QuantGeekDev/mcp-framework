@@ -37,7 +37,22 @@ export class StdioServerTransport implements BaseTransport {
   async start(): Promise<void> {
     await this.transport.start();
     this.running = true;
+
+    // Exit cleanly when the parent process disconnects (stdin EOF). Without
+    // this, the underlying SDK readline poll spins on null reads after the
+    // pipe closes, leaving the server reparented to init at ~99% CPU until
+    // killed manually. Observed daily on macOS Darwin 25.x when the parent
+    // (Claude CLI / Claude Desktop) is hard-killed.
+    process.stdin.on("end", this.handleStdinClose);
+    process.stdin.on("close", this.handleStdinClose);
   }
+
+  private handleStdinClose = (): void => {
+    // Stdio transport has no work to do once stdin is gone. Best-effort
+    // cleanup of the SDK transport, then exit so launchd / parent never sees
+    // a CPU-spinning zombie.
+    this.transport.close().finally(() => process.exit(0));
+  };
 
   async send(message: ExtendedJSONRPCMessage): Promise<void> {
     try {
@@ -73,6 +88,8 @@ export class StdioServerTransport implements BaseTransport {
   }
 
   async close(): Promise<void> {
+    process.stdin.off("end", this.handleStdinClose);
+    process.stdin.off("close", this.handleStdinClose);
     await this.transport.close();
     this.running = false;
   }
