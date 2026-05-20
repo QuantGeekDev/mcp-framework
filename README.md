@@ -498,7 +498,7 @@ const server = new MCPServer({
     options: {
       port: 8080,                // Optional (default: 8080)
       endpoint: "/mcp",          // Optional (default: "/mcp") 
-      responseMode: "batch",     // Optional (default: "batch"), can be "batch" or "stream"
+      responseMode: "stream",    // Optional (default: "stream"), can be "batch" or "stream"
       batchTimeout: 30000,       // Optional (default: 30000ms) - timeout for batch responses
       maxMessageSize: "4mb",     // Optional (default: "4mb") - maximum message size
       
@@ -528,29 +528,29 @@ const server = new MCPServer({
 
 The HTTP Stream transport supports two response modes:
 
-1. **Batch Mode** (Default): Responses are collected and sent as a single JSON-RPC response. This is suitable for typical request-response patterns and is more efficient for most use cases.
+1. **Stream Mode** (Default): All responses are sent over a persistent SSE connection opened for each request. This is ideal for long-running operations or when the server needs to send multiple messages in response to a single request.
 
-2. **Stream Mode**: All responses are sent over a persistent SSE connection opened for each request. This is ideal for long-running operations or when the server needs to send multiple messages in response to a single request.
+2. **Batch Mode**: Responses are collected and sent as a single JSON-RPC response. This is suitable for typical request-response patterns and is more efficient for most use cases.
 
 You can configure the response mode based on your specific needs:
 
 ```typescript
-// For batch mode (default):
-const server = new MCPServer({
-  transport: {
-    type: "http-stream",
-    options: {
-      responseMode: "batch"
-    }
-  }
-});
-
-// For stream mode:
+// For stream mode (default):
 const server = new MCPServer({
   transport: {
     type: "http-stream",
     options: {
       responseMode: "stream"
+    }
+  }
+});
+
+// For batch mode:
+const server = new MCPServer({
+  transport: {
+    type: "http-stream",
+    options: {
+      responseMode: "batch"
     }
   }
 });
