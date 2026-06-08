@@ -1,11 +1,11 @@
 # CLI & Project Scaffolding
 
-`@mcp-framework/docs` includes a CLI tool that scaffolds a ready-to-run documentation MCP server project.
+`@mcpframework/docs` includes a CLI tool that scaffolds a ready-to-run documentation MCP server project.
 
 ## Creating a Project
 
 ```bash
-npx create-docs-server my-api-docs
+npx -p @mcpframework/docs create-docs-mcp my-api-docs
 ```
 
 This creates a project with the following structure:
@@ -14,7 +14,7 @@ This creates a project with the following structure:
 my-api-docs/
 ├── src/
 │   └── index.ts          # Pre-configured DocsServer with FumadocsRemoteSource
-├── package.json          # Dependencies on mcp-framework + @mcp-framework/docs
+├── package.json          # Dependencies on mcp-framework + @mcpframework/docs
 ├── tsconfig.json         # TypeScript configuration
 ├── .env.example          # DOCS_BASE_URL, optional DOCS_API_KEY
 ├── .gitignore
@@ -26,7 +26,7 @@ my-api-docs/
 ### `src/index.ts`
 
 ```typescript
-import { DocsServer, FumadocsRemoteSource } from "@mcp-framework/docs";
+import { DocsServer, FumadocsRemoteSource } from "@mcpframework/docs";
 
 const source = new FumadocsRemoteSource({
   baseUrl: process.env.DOCS_BASE_URL || "https://docs.example.com",
@@ -109,7 +109,7 @@ Add to MCP settings:
 The package includes a `SKILL.md.template` that you can customize to teach Claude Code how to approach integrations against your API. Copy it into your project:
 
 ```bash
-cp node_modules/@mcp-framework/docs/SKILL.md.template SKILL.md
+cp node_modules/@mcpframework/docs/SKILL.md.template SKILL.md
 # Edit SKILL.md with your API-specific patterns
 ```
 

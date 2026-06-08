@@ -794,7 +794,7 @@ Spin up an MCP documentation server from any Fumadocs site or any site with `llm
 
 ```bash
 # Scaffold a new docs MCP server project
-npx create-docs-mcp my-api-docs
+npx -p @mcpframework/docs create-docs-mcp my-api-docs
 cd my-api-docs
 
 # Configure your docs site URL

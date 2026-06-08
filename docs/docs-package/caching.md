@@ -1,6 +1,6 @@
 # Caching
 
-`@mcp-framework/docs` includes a built-in caching layer that reduces HTTP requests to your documentation site. All source adapters use caching automatically.
+`@mcpframework/docs` includes a built-in caching layer that reduces HTTP requests to your documentation site. All source adapters use caching automatically.
 
 ## Default Cache
 
@@ -19,7 +19,7 @@ The default `MemoryCache` is an in-memory LRU (Least Recently Used) cache with T
 ### Configuration
 
 ```typescript
-import { MemoryCache, LlmsTxtSource } from "@mcp-framework/docs";
+import { MemoryCache, LlmsTxtSource } from "@mcpframework/docs";
 
 const cache = new MemoryCache({
   maxEntries: 200,       // Default: 100
@@ -58,7 +58,7 @@ interface Cache {
 ### Example: Redis Cache
 
 ```typescript
-import { Cache, CacheStats } from "@mcp-framework/docs";
+import { Cache, CacheStats } from "@mcpframework/docs";
 import { createClient } from "redis";
 
 class RedisCache implements Cache {

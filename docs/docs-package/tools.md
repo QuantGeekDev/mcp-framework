@@ -1,6 +1,6 @@
 # Documentation Tools
 
-`@mcp-framework/docs` provides three MCP tools that extend `MCPTool` from mcp-framework. Each tool uses Zod schemas with mandatory `.describe()` on all fields.
+`@mcpframework/docs` provides three MCP tools that extend `MCPTool` from mcp-framework. Each tool uses Zod schemas with mandatory `.describe()` on all fields.
 
 ## search_docs
 
@@ -125,8 +125,8 @@ With `section: "Authentication"`:
 You can use the tool classes directly without DocsServer:
 
 ```typescript
-import { SearchDocsTool, GetPageTool, ListSectionsTool } from "@mcp-framework/docs";
-import { LlmsTxtSource } from "@mcp-framework/docs/sources";
+import { SearchDocsTool, GetPageTool, ListSectionsTool } from "@mcpframework/docs";
+import { LlmsTxtSource } from "@mcpframework/docs/sources";
 
 const source = new LlmsTxtSource({ baseUrl: "https://docs.example.com" });
 

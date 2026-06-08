@@ -1,6 +1,6 @@
 # Fumadocs Setup Guide
 
-This guide explains how to configure your [Fumadocs](https://fumadocs.vercel.app/) documentation site to work with `@mcp-framework/docs`.
+This guide explains how to configure your [Fumadocs](https://fumadocs.vercel.app/) documentation site to work with `@mcpframework/docs`.
 
 ## Prerequisites
 
@@ -72,7 +72,7 @@ curl "https://docs.yoursite.com/api/search?query=getting+started"
 ## Step 4: Create Your MCP Server
 
 ```bash
-npx create-docs-server my-api-docs
+npx -p @mcpframework/docs create-docs-mcp my-api-docs
 cd my-api-docs
 ```
 

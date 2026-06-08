@@ -5,7 +5,7 @@
 ## Basic Usage
 
 ```typescript
-import { DocsServer, FumadocsRemoteSource } from "@mcp-framework/docs";
+import { DocsServer, FumadocsRemoteSource } from "@mcpframework/docs";
 
 const source = new FumadocsRemoteSource({
   baseUrl: "https://docs.myapi.com",
