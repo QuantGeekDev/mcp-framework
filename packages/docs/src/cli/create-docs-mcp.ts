@@ -16,7 +16,7 @@ async function main() {
     console.error('Usage: create-docs-mcp <project-name>');
     console.error('');
     console.error('Example:');
-    console.error('  npx create-docs-mcp my-api-docs');
+    console.error('  npx -p @mcpframework/docs create-docs-mcp my-api-docs');
     process.exit(1);
   }
 

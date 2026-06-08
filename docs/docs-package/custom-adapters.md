@@ -11,7 +11,7 @@ import {
   DocSearchResult,
   DocSection,
   DocSearchOptions,
-} from "@mcp-framework/docs";
+} from "@mcpframework/docs";
 
 class MyCustomSource implements DocSource {
   name = "my-custom-docs";
@@ -95,7 +95,7 @@ class MyCustomSource implements DocSource {
 ## Using Your Custom Source
 
 ```typescript
-import { DocsServer } from "@mcp-framework/docs";
+import { DocsServer } from "@mcpframework/docs";
 
 const source = new MyCustomSource();
 
@@ -113,7 +113,7 @@ server.start();
 If your site publishes `llms.txt` but also has a custom search API, extend `LlmsTxtSource` instead of implementing from scratch:
 
 ```typescript
-import { LlmsTxtSource, DocSearchResult, DocSearchOptions } from "@mcp-framework/docs";
+import { LlmsTxtSource, DocSearchResult, DocSearchOptions } from "@mcpframework/docs";
 
 class MyEnhancedSource extends LlmsTxtSource {
   override get name(): string {
@@ -160,7 +160,7 @@ import {
   DocFetchError,
   DocParseError,
   DocNotFoundError,
-} from "@mcp-framework/docs";
+} from "@mcpframework/docs";
 
 class MySource implements DocSource {
   async getPage(slug: string): Promise<DocPage | null> {

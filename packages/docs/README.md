@@ -25,7 +25,7 @@ server.start();
 Or scaffold a project instantly:
 
 ```bash
-npx create-docs-mcp my-api-docs
+npx -p @mcpframework/docs create-docs-mcp my-api-docs
 ```
 
 ## Sources

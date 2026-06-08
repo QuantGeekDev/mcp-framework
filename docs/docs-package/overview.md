@@ -1,6 +1,6 @@
-# @mcp-framework/docs Overview
+# @mcpframework/docs Overview
 
-`@mcp-framework/docs` is a companion package that lets API providers spin up an MCP documentation server from their existing documentation site. Developers connect from Claude Code, Cursor, or any MCP client and get tools to search, browse, and retrieve documentation — enabling AI agents to write correct integration code on the first try.
+`@mcpframework/docs` is a companion package that lets API providers spin up an MCP documentation server from their existing documentation site. Developers connect from Claude Code, Cursor, or any MCP client and get tools to search, browse, and retrieve documentation — enabling AI agents to write correct integration code on the first try.
 
 ## How It Works
 
@@ -9,7 +9,7 @@ The package provides:
 1. **Source Adapters** — connect to your documentation backend (Fumadocs, any site with `llms.txt`)
 2. **MCP Tools** — `search_docs`, `get_page`, `list_sections` that AI agents can call
 3. **DocsServer** — a convenience wrapper that wires everything together
-4. **CLI Scaffolder** — `npx create-docs-server my-api-docs` to generate a project in seconds
+4. **CLI Scaffolder** — `npx -p @mcpframework/docs create-docs-mcp my-api-docs` to generate a project in seconds
 
 ```
 Your Docs Site                    MCP Client (Claude Code, Cursor, etc.)
@@ -27,7 +27,7 @@ Your Docs Site                    MCP Client (Claude Code, Cursor, etc.)
 ## Quick Start
 
 ```typescript
-import { DocsServer, FumadocsRemoteSource } from "@mcp-framework/docs";
+import { DocsServer, FumadocsRemoteSource } from "@mcpframework/docs";
 
 const source = new FumadocsRemoteSource({
   baseUrl: "https://docs.myapi.com",
@@ -45,7 +45,7 @@ server.start();
 Or scaffold a complete project:
 
 ```bash
-npx create-docs-server my-api-docs
+npx -p @mcpframework/docs create-docs-mcp my-api-docs
 cd my-api-docs
 cp .env.example .env
 # Edit .env with your docs site URL
@@ -54,11 +54,11 @@ npm run build && npm start
 
 ## Relationship to mcp-framework
 
-`@mcp-framework/docs` is a **consumer** of mcp-framework, not a fork. It imports `MCPTool` from mcp-framework and composes pre-built documentation tools on top of it. This keeps the core framework general-purpose while giving docs-server users a turnkey experience.
+`@mcpframework/docs` is a **consumer** of mcp-framework, not a fork. It imports `MCPTool` from mcp-framework and composes pre-built documentation tools on top of it. This keeps the core framework general-purpose while giving docs-server users a turnkey experience.
 
 ```
 mcp-framework (peer dependency)
-    └── @mcp-framework/docs
+    └── @mcpframework/docs
             ├── DocSource interface
             ├── Pre-built tools (SearchDocs, GetPage, ListSections)
             ├── DocsServer convenience class

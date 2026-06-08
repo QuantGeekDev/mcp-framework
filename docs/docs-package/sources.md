@@ -1,6 +1,6 @@
 # Source Adapters
 
-Source adapters are the central abstraction in `@mcp-framework/docs`. Every documentation backend implements the `DocSource` interface, and all tools interact through it — never touching HTTP or filesystem directly.
+Source adapters are the central abstraction in `@mcpframework/docs`. Every documentation backend implements the `DocSource` interface, and all tools interact through it — never touching HTTP or filesystem directly.
 
 ## DocSource Interface
 
@@ -23,7 +23,7 @@ Purpose-built for [Fumadocs](https://fumadocs.vercel.app/) sites. Leverages the 
 ### Configuration
 
 ```typescript
-import { FumadocsRemoteSource } from "@mcp-framework/docs";
+import { FumadocsRemoteSource } from "@mcpframework/docs";
 
 const source = new FumadocsRemoteSource({
   baseUrl: "https://docs.myapi.com",       // Required
@@ -68,7 +68,7 @@ Search is performed locally by splitting `llms-full.txt` into page blocks and sc
 ### Configuration
 
 ```typescript
-import { LlmsTxtSource } from "@mcp-framework/docs";
+import { LlmsTxtSource } from "@mcpframework/docs";
 
 const source = new LlmsTxtSource({
   baseUrl: "https://docs.myapi.com",

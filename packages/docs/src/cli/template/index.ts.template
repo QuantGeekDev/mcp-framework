@@ -1,4 +1,4 @@
-import { DocsServer, FumadocsRemoteSource } from "@mcp-framework/docs";
+import { DocsServer, FumadocsRemoteSource } from "@mcpframework/docs";
 
 const source = new FumadocsRemoteSource({
   baseUrl: process.env.DOCS_BASE_URL || "https://docs.example.com",

@@ -13,7 +13,7 @@
     "dev": "tsc --watch"
   },
   "dependencies": {
-    "@mcp-framework/docs": "^0.1.0",
+    "@mcpframework/docs": "^0.1.0",
     "mcp-framework": "^0.2.18",
     "@modelcontextprotocol/sdk": "^1.11.0"
   },
