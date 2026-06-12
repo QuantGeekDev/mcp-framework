@@ -86,5 +86,10 @@
     "prettier": "^3.5.3",
     "ts-jest": "^29.1.2",
     "typescript-eslint": "^8.28.0"
-  }
+  },
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/QuantGeekDev/mcp-framework/issues"
+  },
+  "homepage": "https://github.com/QuantGeekDev/mcp-framework#readme"
 }
