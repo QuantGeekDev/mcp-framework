@@ -1,6 +1,9 @@
 {
   "name": "mcp-framework",
   "version": "0.2.22",
+  "bugs": {
+    "url": "https://github.com/QuantGeekDev/mcp-framework/issues"
+  },
   "description": "Framework for building Model Context Protocol (MCP) servers in Typescript",
   "type": "module",
   "author": "Alex Andru <alex@andru.codes>",
