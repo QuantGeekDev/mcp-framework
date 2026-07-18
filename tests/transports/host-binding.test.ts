@@ -80,5 +80,11 @@ describe('Host binding defaults', () => {
       expect(DEFAULT_HTTP_STREAM_CONFIG.port).toBe(8080);
       expect((DEFAULT_HTTP_STREAM_CONFIG as any).host).toBeUndefined();
     });
+
+    it('should default responseMode to "batch" in DEFAULT_HTTP_STREAM_CONFIG', () => {
+      // README and the type doc comment both document "batch" as the default
+      // response mode for the HTTP Stream transport; the runtime default must match.
+      expect(DEFAULT_HTTP_STREAM_CONFIG.responseMode).toBe('batch');
+    });
   });
 });

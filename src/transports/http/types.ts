@@ -71,7 +71,7 @@ export interface HttpStreamTransportConfig {
 
   /**
    * Response mode: stream (Server-Sent Events) or batch (JSON)
-   * Defaults to 'stream'
+   * Defaults to 'batch'
    */
   responseMode?: ResponseMode;
 
@@ -119,7 +119,7 @@ export const DEFAULT_SESSION_CONFIG: SessionConfig = {
 export const DEFAULT_HTTP_STREAM_CONFIG: HttpStreamTransportConfig = {
   port: 8080,
   endpoint: '/mcp',
-  responseMode: 'stream',
+  responseMode: 'batch',
   batchTimeout: 30000,
   maxMessageSize: 4 * 1024 * 1024,
   session: DEFAULT_SESSION_CONFIG,
