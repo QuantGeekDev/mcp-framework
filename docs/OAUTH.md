@@ -24,7 +24,7 @@ This guide provides comprehensive instructions for setting up OAuth 2.1 authenti
 
 ### What is OAuth in MCP?
 
-OAuth 2.1 authentication in MCP (Model Context Protocol) provides secure, standardized authorization for your MCP servers. The MCP specification (2025-06-18) mandates OAuth 2.1 with PKCE support for production deployments.
+OAuth 2.1 authentication in MCP (Model Context Protocol) provides secure, standardized authorization for your MCP servers. The [MCP authorization specification](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization#protocol-requirements) makes authorization optional. When an HTTP-based MCP implementation supports authorization, it should follow the specification's OAuth-based flow, including PKCE for applicable authorization-code clients. Stdio implementations should use credentials from the environment instead.
 
 ### When to Use OAuth
 
