@@ -172,6 +172,7 @@ export interface ToolProtocol extends SDKTool {
       type: 'object';
       properties?: Record<string, object>;
       required?: string[];
+      additionalProperties?: boolean;
     };
     title?: string;
     icons?: MCPIcon[];
@@ -570,7 +571,17 @@ export abstract class MCPTool<TInput extends Record<string, any> = any, TSchema 
     return schema instanceof z.ZodObject;
   }
 
-  get inputSchema(): { type: 'object'; properties?: Record<string, object>; required?: string[] } {
+  /** True for `z.object(...).strict()`, which rejects unknown keys. */
+  private isStrictZodObject(schema: z.ZodObject<any>): boolean {
+    return (schema as any)._def?.unknownKeys === 'strict';
+  }
+
+  get inputSchema(): {
+    type: 'object';
+    properties?: Record<string, object>;
+    required?: string[];
+    additionalProperties?: boolean;
+  } {
     if (this.isZodObjectSchema(this.schema)) {
       return this.generateSchemaFromZodObject(this.schema);
     }
@@ -604,6 +615,7 @@ export abstract class MCPTool<TInput extends Record<string, any> = any, TSchema 
     type: 'object';
     properties: Record<string, object>;
     required: string[];
+    additionalProperties?: boolean;
   } {
     const shape = zodSchema.shape;
     const properties: Record<string, object> = {};
@@ -636,6 +648,7 @@ export abstract class MCPTool<TInput extends Record<string, any> = any, TSchema 
       type: 'object',
       properties,
       required,
+      ...(this.isStrictZodObject(zodSchema) && { additionalProperties: false }),
     };
   }
 
@@ -727,6 +740,9 @@ export abstract class MCPTool<TInput extends Record<string, any> = any, TSchema 
       jsonSchema.properties = nestedProperties;
       if (nestedRequired.length > 0) {
         jsonSchema.required = nestedRequired;
+      }
+      if (this.isStrictZodObject(currentSchema)) {
+        jsonSchema.additionalProperties = false;
       }
     }
 

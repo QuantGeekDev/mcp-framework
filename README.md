@@ -428,6 +428,19 @@ MCP_SKIP_TOOL_VALIDATION=true npm run build
 NODE_ENV=production npm run dev
 ```
 
+### Rejecting Unknown Arguments
+
+Use `.strict()` to reject arguments that are not in your schema. The generated JSON Schema then includes `additionalProperties: false`, so clients know extra arguments are not allowed:
+
+```typescript
+schema = z.object({
+  city: z.string().describe("City name"),
+}).strict();
+// inputSchema: { type: "object", properties: {...}, required: ["city"], additionalProperties: false }
+```
+
+This also applies to nested `z.object(...).strict()` fields.
+
 ### Setting up the Server
 
 ```typescript
