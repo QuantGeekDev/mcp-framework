@@ -449,6 +449,17 @@ const server = new MCPServer({
 await server.start();
 ```
 
+### Server Instructions
+
+Use `instructions` to tell clients how to use your server. It is returned in the `initialize` result, and clients may add it to the model's context:
+
+```typescript
+const server = new MCPServer({
+  name: "weather-server",
+  instructions: "Call get_forecast with a city name. Temperatures are in Celsius.",
+});
+```
+
 ## Transport Configuration
 
 ### stdio Transport (Default)

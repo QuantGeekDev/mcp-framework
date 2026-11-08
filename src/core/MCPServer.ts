@@ -84,6 +84,12 @@ export interface TasksConfig {
 export interface MCPServerConfig {
   name?: string;
   version?: string;
+  /**
+   * Optional server instructions returned to clients in the `initialize`
+   * result (`InitializeResult.instructions`). Clients may add them to the
+   * model's context, e.g. to explain how the server's tools fit together.
+   */
+  instructions?: string;
   basePath?: string;
   transport?: TransportConfig;
   /** Array of transport configs for running multiple transports concurrently.
@@ -148,6 +154,7 @@ export class MCPServer {
   private appContentCache: Map<string, string> = new Map();
   private serverName: string;
   private serverVersion: string;
+  private serverInstructions?: string;
   private basePath: string;
   private transportConfigs: TransportConfig[];
   private capabilities: ServerCapabilities = {};
@@ -175,6 +182,7 @@ export class MCPServer {
     this.basePath = this.resolveBasePath(config.basePath);
     this.serverName = config.name ?? this.getDefaultName();
     this.serverVersion = config.version ?? this.getDefaultVersion();
+    this.serverInstructions = config.instructions;
     this._loggingEnabled = config.logging ?? false;
     this._tasksConfig = config.tasks;
     this._devMode = config.devMode ?? !!process.env.MCP_DEV_MODE;
@@ -278,16 +286,25 @@ export class MCPServer {
     return process.cwd();
   }
 
+  /** Builds the options passed to every SDK Server instance. */
+  private buildSDKServerOptions(): Record<string, unknown> {
+    const serverOptions: Record<string, unknown> = { capabilities: this.capabilities };
+    if (this.serverInstructions) {
+      serverOptions.instructions = this.serverInstructions;
+    }
+    if (this._hasApps) {
+      serverOptions.extensions = { [MCP_APP_EXTENSION_ID]: {} };
+    }
+    return serverOptions;
+  }
+
   /**
    * Creates a new SDK Server instance configured with all registered handlers.
    * Used by handleRequest() to create isolated per-request servers, and by
    * SSE transport for per-session servers.
    */
   private createSDKServerForSession(): Server {
-    const serverOptions: Record<string, unknown> = { capabilities: this.capabilities };
-    if (this._hasApps) {
-      serverOptions.extensions = { [MCP_APP_EXTENSION_ID]: {} };
-    }
+    const serverOptions = this.buildSDKServerOptions();
     const sessionServer = new Server(
       { name: this.serverName, version: this.serverVersion },
       serverOptions as any,
@@ -1305,10 +1322,7 @@ export class MCPServer {
 
       await this.ensureInitialized();
 
-      const serverOptions: Record<string, unknown> = { capabilities: this.capabilities };
-      if (this._hasApps) {
-        serverOptions.extensions = { [MCP_APP_EXTENSION_ID]: {} };
-      }
+      const serverOptions = this.buildSDKServerOptions();
 
       // Create one binding per transport config
       for (const tc of this.transportConfigs) {
