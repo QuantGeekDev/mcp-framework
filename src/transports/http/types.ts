@@ -19,7 +19,12 @@ export type ResponseMode = 'stream' | 'batch';
  */
 export interface SessionConfig {
   /**
-   * Whether to enable session management
+   * Whether to enable session management.
+   *
+   * Set to `false` to run in stateless mode: no `Mcp-Session-Id` is issued or
+   * required, and each POST is handled independently, so the server can run
+   * behind a load balancer without sticky sessions. GET and DELETE return 405.
+   *
    * Default: true
    */
   enabled?: boolean;

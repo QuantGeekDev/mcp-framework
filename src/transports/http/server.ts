@@ -12,6 +12,8 @@ import { initializeOAuthMetadata } from '../utils/oauth-metadata.js';
 import { validateOrigin } from '../utils/origin-validator.js';
 import { requestContext, RequestContextData } from '../../utils/requestContext.js';
 import { AuthResult } from '../../auth/types.js';
+import type { SDKServerFactory } from '../sse/server.js';
+import type { Server as SDKServer } from '@modelcontextprotocol/sdk/server/index.js';
 
 export class HttpStreamTransport extends AbstractTransport {
   readonly type = 'http-stream';
@@ -26,6 +28,15 @@ export class HttpStreamTransport extends AbstractTransport {
 
   private _transports: { [sessionId: string]: StreamableHTTPServerTransport } = {};
 
+  // Stateless mode (session.enabled === false): every POST gets its own SDK
+  // transport and SDK Server, so any replica can handle any request.
+  private _stateless: boolean;
+  private _serverFactory?: SDKServerFactory;
+  private _statelessRequests = new Set<{
+    transport: StreamableHTTPServerTransport;
+    server: SDKServer;
+  }>();
+
   constructor(config: HttpStreamTransportConfig = {}) {
     super();
 
@@ -33,6 +44,7 @@ export class HttpStreamTransport extends AbstractTransport {
     this._port = config.port || 8080;
     this._endpoint = config.endpoint || '/mcp';
     this._enableJsonResponse = config.responseMode === 'batch';
+    this._stateless = config.session?.enabled === false;
 
     // Health endpoint: enabled by default at /health
     const healthEnabled = config.health?.enabled !== false;
@@ -53,8 +65,17 @@ export class HttpStreamTransport extends AbstractTransport {
           endpoints: config.auth.endpoints
         } : undefined,
         cors: config.cors ? true : false,
+        stateless: this._stateless,
       })}`
     );
+  }
+
+  /**
+   * Set the factory used to create an SDK Server for each request in stateless
+   * mode. Ignored when sessions are enabled.
+   */
+  setServerFactory(factory: SDKServerFactory): void {
+    this._serverFactory = factory;
   }
 
   async start(): Promise<void> {
@@ -154,6 +175,11 @@ export class HttpStreamTransport extends AbstractTransport {
       authData = (authResult as AuthResult).data as RequestContextData || {};
     }
 
+    if (this._stateless) {
+      await this.handleStatelessRequest(req, res, body, authData);
+      return;
+    }
+
     // Allow re-initialization even when a stale session ID is provided.
     // Clients like Cline may keep sending the old session ID header after
     // a session is lost (server restart, transport error, etc.).
@@ -221,6 +247,54 @@ export class HttpStreamTransport extends AbstractTransport {
     });
   }
 
+  private async handleStatelessRequest(
+    req: IncomingMessage,
+    res: ServerResponse,
+    body: unknown,
+    authData: RequestContextData
+  ): Promise<void> {
+    // Without sessions there is no standalone SSE stream to open (GET) and
+    // nothing to terminate (DELETE).
+    if (req.method !== 'POST') {
+      if (!res.headersSent) {
+        res.setHeader('Allow', 'POST');
+      }
+      this.sendError(res, 405, -32000, 'Method not allowed.');
+      return;
+    }
+
+    if (!this._serverFactory) {
+      logger.error(
+        'Server factory not set. Call setServerFactory() before handling stateless requests.'
+      );
+      this.sendError(res, 500, -32603, 'Internal server error');
+      return;
+    }
+
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+      enableJsonResponse: this._enableJsonResponse,
+    });
+    const server = this._serverFactory();
+    const entry = { transport, server };
+    this._statelessRequests.add(entry);
+
+    transport.onerror = (error) => {
+      logger.error(`Transport error for stateless request: ${error}`);
+    };
+
+    res.on('close', () => {
+      this._statelessRequests.delete(entry);
+      transport.close().catch(() => {});
+      server.close().catch(() => {});
+    });
+
+    await server.connect(transport);
+    await requestContext.run(authData, async () => {
+      await transport.handleRequest(req, res, body);
+    });
+  }
+
   private async readRequestBody(req: IncomingMessage): Promise<any> {
     const maxSize = this._config.maxMessageSize ?? 4 * 1024 * 1024;
     return new Promise((resolve, reject) => {
@@ -282,6 +356,15 @@ export class HttpStreamTransport extends AbstractTransport {
       return;
     }
 
+    if (this._stateless) {
+      // Responses are sent by each request's own SDK Server. Messages from the
+      // shared server (e.g. list_changed) have no client to go to.
+      logger.debug(
+        `Stateless mode: dropping message with no request to answer: ${JSON.stringify(message)}`
+      );
+      return;
+    }
+
     const activeSessions = Object.entries(this._transports);
     if (activeSessions.length === 0) {
       logger.warn('No active sessions to send message to');
@@ -325,6 +408,16 @@ export class HttpStreamTransport extends AbstractTransport {
       }
     }
     this._transports = {};
+
+    for (const { transport, server } of this._statelessRequests) {
+      try {
+        await transport.close();
+        await server.close();
+      } catch (error) {
+        logger.error(`Error closing stateless request: ${error}`);
+      }
+    }
+    this._statelessRequests.clear();
 
     if (this._server) {
       this._server.close();

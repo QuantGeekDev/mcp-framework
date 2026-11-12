@@ -1355,6 +1355,12 @@ export class MCPServer {
           const sseTransport = b.transport as SSEServerTransport;
           sseTransport.setServerFactory(() => this.createSDKServerForSession());
         }
+        if (b.transport.type === 'http-stream') {
+          // Only used in stateless mode (session.enabled: false), where each
+          // request gets its own SDK Server.
+          const httpTransport = b.transport as HttpStreamTransport;
+          httpTransport.setServerFactory(() => this.createSDKServerForSession());
+        }
       }
 
       // Connect all transports concurrently
