@@ -573,7 +573,7 @@ const server = new MCPServer({
 
 In stateless mode, no session ID is issued or required, and every POST is handled on its own, so any replica behind a load balancer can serve any request. GET and DELETE return `405`.
 
-Features that need the server to keep track of a client between requests don't work in stateless mode: sampling, elicitation, roots, the standalone SSE stream, cancellation, progress and log notifications, and stream resumability. Tasks are kept in the memory of the replica that created them.
+Features that need the server to keep track of a client between requests don't work in stateless mode: sampling, elicitation, roots, the standalone SSE stream, cancellation, progress and log notifications, list changed and resource update notifications, and stream resumability. Tasks are kept in the memory of the replica that created them.
 
 #### HTTP Stream Transport Features
 

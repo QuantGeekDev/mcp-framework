@@ -422,12 +422,15 @@ export class HttpStreamTransport extends AbstractTransport {
     }
     this._transports = {};
 
-    for (const { transport, server } of this._statelessRequests) {
-      const results = await Promise.allSettled([transport.close(), server.close()]);
-      for (const result of results) {
-        if (result.status === 'rejected') {
-          logger.error(`Error closing stateless request: ${result.reason}`);
-        }
+    const results = await Promise.allSettled(
+      [...this._statelessRequests].flatMap(({ transport, server }) => [
+        transport.close(),
+        server.close(),
+      ])
+    );
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        logger.error(`Error closing stateless request: ${result.reason}`);
       }
     }
     this._statelessRequests.clear();
