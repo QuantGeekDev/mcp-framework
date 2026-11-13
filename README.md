@@ -556,9 +556,28 @@ const server = new MCPServer({
 });
 ```
 
+#### Stateless Mode
+
+By default, each client gets a session (`Mcp-Session-Id`) that lives in the memory of the process that created it, so running several replicas requires sticky sessions. Set `session.enabled` to `false` to run without sessions:
+
+```typescript
+const server = new MCPServer({
+  transport: {
+    type: "http-stream",
+    options: {
+      session: { enabled: false }
+    }
+  }
+});
+```
+
+In stateless mode, no session ID is issued or required, and every POST is handled on its own, so any replica behind a load balancer can serve any request. GET and DELETE return `405`.
+
+Features that need the server to keep track of a client between requests don't work in stateless mode: sampling, elicitation, roots, the standalone SSE stream, cancellation, progress and log notifications, list changed and resource update notifications, and stream resumability. Tasks are kept in the memory of the replica that created them.
+
 #### HTTP Stream Transport Features
 
-- **Session Management**: Automatic session tracking and management
+- **Session Management**: Automatic session tracking and management, or a stateless mode for horizontal scaling
 - **Stream Resumability**: Optional support for resuming streams after connection loss
 - **Batch Processing**: Support for JSON-RPC batch requests/responses
 - **Comprehensive Error Handling**: Detailed error responses with JSON-RPC error codes
