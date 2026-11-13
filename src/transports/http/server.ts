@@ -45,6 +45,9 @@ export class HttpStreamTransport extends AbstractTransport {
     this._endpoint = config.endpoint || '/mcp';
     this._enableJsonResponse = config.responseMode === 'batch';
     this._stateless = config.session?.enabled === false;
+    if (this._stateless) {
+      logger.info('HTTP Stream transport running in stateless mode (session.enabled: false)');
+    }
 
     // Health endpoint: enabled by default at /health
     const healthEnabled = config.health?.enabled !== false;
@@ -156,9 +159,18 @@ export class HttpStreamTransport extends AbstractTransport {
     const sessionId = req.headers['mcp-session-id'] as string | undefined;
     let transport: StreamableHTTPServerTransport;
 
-    // Determine if this is an initialize request (needs body parsing)
+    // Without sessions there is no standalone SSE stream to open (GET) and
+    // nothing to terminate (DELETE).
+    if (this._stateless && req.method !== 'POST') {
+      res.setHeader('Allow', 'POST');
+      this.sendError(res, 405, -32000, 'Method not allowed.');
+      return;
+    }
+
+    // Determine if this is an initialize request (needs body parsing).
+    // In stateless mode a session ID header is meaningless, so ignore it here.
     const body = req.method === 'POST' ? await this.readRequestBody(req) : null;
-    const isInitialize = !sessionId && body && isInitializeRequest(body);
+    const isInitialize = (this._stateless || !sessionId) && body && isInitializeRequest(body);
 
     // Perform authentication check once at the beginning
     const authEndpoint = isInitialize ? 'sse' : 'messages';
@@ -253,13 +265,10 @@ export class HttpStreamTransport extends AbstractTransport {
     body: unknown,
     authData: RequestContextData
   ): Promise<void> {
-    // Without sessions there is no standalone SSE stream to open (GET) and
-    // nothing to terminate (DELETE).
-    if (req.method !== 'POST') {
-      if (!res.headersSent) {
-        res.setHeader('Allow', 'POST');
-      }
-      this.sendError(res, 405, -32000, 'Method not allowed.');
+    // The client may have disconnected while the body was read or auth ran.
+    // 'close' has already fired then, so cleanup below would never run.
+    if (res.destroyed) {
+      logger.debug('Stateless request closed before it could be handled');
       return;
     }
 
@@ -358,10 +367,14 @@ export class HttpStreamTransport extends AbstractTransport {
 
     if (this._stateless) {
       // Responses are sent by each request's own SDK Server. Messages from the
-      // shared server (e.g. list_changed) have no client to go to.
-      logger.debug(
-        `Stateless mode: dropping message with no request to answer: ${JSON.stringify(message)}`
-      );
+      // shared server have no client to go to: drop notifications, and reject
+      // requests (e.g. roots/list) so they fail now instead of timing out.
+      if ('method' in message && 'id' in message) {
+        throw new Error(
+          `Cannot send ${message.method} request: the HTTP Stream transport is in stateless mode`
+        );
+      }
+      logger.debug(`Stateless mode: dropping notification with no request to answer`);
       return;
     }
 
@@ -410,11 +423,11 @@ export class HttpStreamTransport extends AbstractTransport {
     this._transports = {};
 
     for (const { transport, server } of this._statelessRequests) {
-      try {
-        await transport.close();
-        await server.close();
-      } catch (error) {
-        logger.error(`Error closing stateless request: ${error}`);
+      const results = await Promise.allSettled([transport.close(), server.close()]);
+      for (const result of results) {
+        if (result.status === 'rejected') {
+          logger.error(`Error closing stateless request: ${result.reason}`);
+        }
       }
     }
     this._statelessRequests.clear();

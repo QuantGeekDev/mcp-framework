@@ -32,13 +32,27 @@ const echoCallBody = (id: number, text: string, delay: number = 0) => ({
   id,
 });
 
+async function waitFor(condition: () => boolean, timeoutMs: number = 2000): Promise<void> {
+  const start = Date.now();
+  while (!condition()) {
+    if (Date.now() - start > timeoutMs) throw new Error('waitFor timed out');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
 function randomPort(): number {
   return 20000 + Math.floor(Math.random() * 20000);
 }
 
-async function post(port: number, body: unknown, headers: Record<string, string> = {}) {
+async function post(
+  port: number,
+  body: unknown,
+  headers: Record<string, string> = {},
+  signal?: AbortSignal
+) {
   return fetch(`http://127.0.0.1:${port}/mcp`, {
     method: 'POST',
+    signal,
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json, text/event-stream',
@@ -135,7 +149,7 @@ describe.each(['batch', 'stream'] as const)(
       await readMessage(await post(port, toolsListBody()));
       await readMessage(await post(port, echoCallBody(3, 'hi')));
       // 'close' fires asynchronously after the response ends
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await waitFor(() => (transport as any)._statelessRequests.size === 0);
       expect((transport as any)._statelessRequests.size).toBe(0);
       expect(Object.keys((transport as any)._transports)).toHaveLength(0);
     });
@@ -162,6 +176,12 @@ describe.each(['batch', 'stream'] as const)(
         transport.send({ jsonrpc: '2.0', method: 'notifications/tools/list_changed' })
       ).resolves.toBeUndefined();
     });
+
+    it('rejects server-to-client requests from the shared server instead of hanging', async () => {
+      await expect(transport.send({ jsonrpc: '2.0', id: 1, method: 'roots/list' })).rejects.toThrow(
+        'stateless mode'
+      );
+    });
   }
 );
 
@@ -177,6 +197,86 @@ describe('HttpStreamTransport — stateless mode without a server factory', () =
     } finally {
       await transport.close();
     }
+  });
+});
+
+describe('HttpStreamTransport — stateless mode with auth', () => {
+  let transport: HttpStreamTransport;
+
+  afterEach(async () => {
+    await transport.close();
+  });
+
+  it('returns 405 for GET before authenticating', async () => {
+    const port = randomPort();
+    transport = new HttpStreamTransport({
+      port,
+      session: { enabled: false },
+      auth: { provider: { authenticate: async () => false } },
+    });
+    transport.setServerFactory(createEchoServer);
+    await transport.start();
+
+    const res = await fetch(`http://127.0.0.1:${port}/mcp`, {
+      headers: { Accept: 'text/event-stream' },
+    });
+    expect(res.status).toBe(405);
+    await res.text();
+  });
+
+  it('treats initialize with a stale session ID as initialize for auth', async () => {
+    const port = randomPort();
+    transport = new HttpStreamTransport({
+      port,
+      responseMode: 'batch',
+      session: { enabled: false },
+      // initialize is public ('sse' endpoint), everything else needs auth
+      auth: { provider: { authenticate: async () => false }, endpoints: { sse: false } },
+    });
+    transport.setServerFactory(createEchoServer);
+    await transport.start();
+
+    const res = await post(port, initializeBody(), { 'mcp-session-id': 'stale-session' });
+    expect(res.status).toBe(200);
+    expect((await readMessage(res)).result.serverInfo.name).toBe('stateless-test');
+  });
+
+  it('does not leak a server when the client disconnects during auth', async () => {
+    const port = randomPort();
+    let authStarted!: () => void;
+    const authStartedPromise = new Promise<void>((resolve) => (authStarted = resolve));
+    let releaseAuth!: () => void;
+    const authReleased = new Promise<void>((resolve) => (releaseAuth = resolve));
+    const factory = jest.fn(createEchoServer);
+
+    transport = new HttpStreamTransport({
+      port,
+      session: { enabled: false },
+      auth: {
+        provider: {
+          authenticate: async () => {
+            authStarted();
+            await authReleased;
+            return true;
+          },
+        },
+      },
+    });
+    transport.setServerFactory(factory);
+    await transport.start();
+
+    const controller = new AbortController();
+    const request = post(port, toolsListBody(), {}, controller.signal).catch(() => undefined);
+    await authStartedPromise;
+    controller.abort();
+    await request;
+    // give the server a moment to see the socket close, then let auth finish
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    releaseAuth();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(factory).not.toHaveBeenCalled();
+    expect((transport as any)._statelessRequests.size).toBe(0);
   });
 });
 
