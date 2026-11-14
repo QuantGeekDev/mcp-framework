@@ -1489,7 +1489,10 @@ export class MCPServer {
    * Returns an empty array if the client doesn't support roots.
    */
   public async listRoots(): Promise<Array<{ uri: string; name?: string }>> {
-    if (!this.server) return [];
+    // With per-session servers (SSE, HTTP Stream) clients initialize those
+    // servers, not this one, and would send their reply to them. Asking would
+    // only wait for the request timeout.
+    if (!this.server?.getClientCapabilities()?.roots) return [];
     try {
       const result = await this.server.listRoots();
       return result.roots ?? [];
