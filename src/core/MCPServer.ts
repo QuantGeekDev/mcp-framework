@@ -667,7 +667,10 @@ export class MCPServer {
     // the cached roots list when the client signals a change.
     targetServer.setNotificationHandler(RootsListChangedNotificationSchema, async () => {
       try {
-        this._roots = await this.listRoots();
+        // Ask the client that sent the notification. With per-session servers
+        // (SSE, HTTP Stream) the shared server isn't connected to that client.
+        const result = await targetServer.listRoots();
+        this._roots = result.roots ?? [];
         logger.info(`Roots updated: ${this._roots.length} roots available`);
       } catch (error) {
         logger.warn(`Failed to refresh roots: ${error}`);
@@ -1347,13 +1350,16 @@ export class MCPServer {
         `Created ${this.bindings.length} transport binding(s): ${this.bindings.map(b => b.label).join(', ')}`
       );
 
-      // For SSE transports, set up per-session SDK Server instances for proper
-      // session isolation. Each SSE connection gets its own SDK Server with all
-      // handlers registered, connected to its own SDK SSEServerTransport.
+      // For SSE and HTTP Stream transports, set up per-session SDK Server
+      // instances for proper session isolation. Each session gets its own SDK
+      // Server with all handlers registered, connected to its own SDK transport.
       for (const b of this.bindings) {
         if (b.transport.type === 'sse') {
           const sseTransport = b.transport as SSEServerTransport;
           sseTransport.setServerFactory(() => this.createSDKServerForSession());
+        } else if (b.transport.type === 'http-stream') {
+          const httpTransport = b.transport as HttpStreamTransport;
+          httpTransport.setServerFactory(() => this.createSDKServerForSession());
         }
       }
 
