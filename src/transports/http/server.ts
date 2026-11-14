@@ -12,6 +12,7 @@ import { initializeOAuthMetadata } from '../utils/oauth-metadata.js';
 import { validateOrigin } from '../utils/origin-validator.js';
 import { requestContext, RequestContextData } from '../../utils/requestContext.js';
 import { AuthResult } from '../../auth/types.js';
+import type { SDKServerFactory } from '../sse/server.js';
 
 export class HttpStreamTransport extends AbstractTransport {
   readonly type = 'http-stream';
@@ -25,6 +26,7 @@ export class HttpStreamTransport extends AbstractTransport {
   private _healthPath: string | null;
 
   private _transports: { [sessionId: string]: StreamableHTTPServerTransport } = {};
+  private _serverFactory?: SDKServerFactory;
 
   constructor(config: HttpStreamTransportConfig = {}) {
     super();
@@ -55,6 +57,18 @@ export class HttpStreamTransport extends AbstractTransport {
         cors: config.cors ? true : false,
       })}`
     );
+  }
+
+  /**
+   * Set the factory used to create an SDK Server for each session.
+   *
+   * Every session then gets its own SDK Server, so JSON-RPC ids, responses and
+   * request-scoped notifications stay within the session. Without a factory,
+   * messages from all sessions go through the single server connected to this
+   * transport.
+   */
+  setServerFactory(factory: SDKServerFactory): void {
+    this._serverFactory = factory;
   }
 
   async start(): Promise<void> {
@@ -195,11 +209,17 @@ export class HttpStreamTransport extends AbstractTransport {
         logger.error(`Transport error for session ${transport.sessionId}: ${error}`);
       };
 
-      transport.onmessage = async (message: JSONRPCMessage) => {
-        if (this._onmessage) {
-          await this._onmessage(message);
-        }
-      };
+      if (this._serverFactory) {
+        // The session's own SDK Server handles its messages and replies on its
+        // transport directly. connect() keeps the onclose/onerror set above.
+        await this._serverFactory().connect(transport);
+      } else {
+        transport.onmessage = async (message: JSONRPCMessage) => {
+          if (this._onmessage) {
+            await this._onmessage(message);
+          }
+        };
+      }
 
       await requestContext.run(authData, async () => {
         await transport.handleRequest(req, res, body);
