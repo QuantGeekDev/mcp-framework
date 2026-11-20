@@ -733,18 +733,34 @@ export abstract class MCPTool<TInput extends Record<string, any> = any, TSchema 
     // Handle numeric constraints
     if (currentSchema instanceof z.ZodNumber) {
       const checks = (currentSchema as any)._def.checks || [];
+      const isInt = checks.some((check: any) => check.kind === 'int');
       checks.forEach((check: any) => {
         switch (check.kind) {
+          // Exclusive bounds (gt, lt, positive, negative) use the numeric
+          // exclusiveMinimum / exclusiveMaximum of JSON Schema draft-06 and
+          // later, not the boolean draft-04 form, which current schemas
+          // reject (#200). On integers they become the nearest inclusive
+          // bound, e.g. int().positive() -> minimum: 1.
           case 'min':
-            jsonSchema.minimum = check.value;
             if (check.inclusive === false) {
-              jsonSchema.exclusiveMinimum = true;
+              if (isInt) {
+                jsonSchema.minimum = Math.floor(check.value) + 1;
+              } else {
+                jsonSchema.exclusiveMinimum = check.value;
+              }
+            } else {
+              jsonSchema.minimum = check.value;
             }
             break;
           case 'max':
-            jsonSchema.maximum = check.value;
             if (check.inclusive === false) {
-              jsonSchema.exclusiveMaximum = true;
+              if (isInt) {
+                jsonSchema.maximum = Math.ceil(check.value) - 1;
+              } else {
+                jsonSchema.exclusiveMaximum = check.value;
+              }
+            } else {
+              jsonSchema.maximum = check.value;
             }
             break;
           case 'int':
@@ -752,14 +768,6 @@ export abstract class MCPTool<TInput extends Record<string, any> = any, TSchema 
             break;
         }
       });
-
-      // Handle positive() which adds a min check of 0 (exclusive)
-      const hasPositive = checks.some(
-        (check: any) => check.kind === 'min' && check.value === 0 && check.inclusive === false
-      );
-      if (hasPositive) {
-        jsonSchema.minimum = 1;
-      }
     }
 
     // Handle string constraints

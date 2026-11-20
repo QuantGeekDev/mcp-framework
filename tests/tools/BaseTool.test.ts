@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { z } from 'zod';
+import Ajv from 'ajv';
 import { MCPTool } from '../../src/tools/BaseTool.js';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CreateMessageRequest, CreateMessageResult } from '@modelcontextprotocol/sdk/types.js';
@@ -744,6 +745,73 @@ describe('BaseTool', () => {
       expect((props.score as any).type).toBe('number');
       expect((props.score as any).minimum).toBe(0);
       expect((props.score as any).maximum).toBe(100);
+    });
+
+    describe('exclusive number bounds (#200)', () => {
+      const schemaFor = (field: z.ZodNumber) => {
+        const schema = z.object({ value: field.describe('Value') });
+        class BoundTool extends MCPTool<z.infer<typeof schema>, typeof schema> {
+          name = 'bound_tool';
+          description = 'Tool with a number bound';
+          schema = schema;
+          protected async execute(input: z.infer<typeof schema>) {
+            return input;
+          }
+        }
+        return new BoundTool().inputSchema.properties!.value as any;
+      };
+      // Draft-07 / 2020-12 validation of the generated property
+      const accepts = (property: any, value: number) =>
+        new Ajv({ strictKeywords: true } as any).validate(property, value) as boolean;
+
+      it('uses a numeric exclusiveMinimum for positive() and gt() on numbers', () => {
+        const positive = schemaFor(z.number().positive());
+        expect(positive.exclusiveMinimum).toBe(0);
+        expect(positive.minimum).toBeUndefined();
+        expect(accepts(positive, 0.5)).toBe(true);
+        expect(accepts(positive, 0)).toBe(false);
+
+        const gt = schemaFor(z.number().gt(5));
+        expect(gt.exclusiveMinimum).toBe(5);
+        expect(gt.minimum).toBeUndefined();
+        expect(accepts(gt, 5.1)).toBe(true);
+        expect(accepts(gt, 5)).toBe(false);
+      });
+
+      it('uses a numeric exclusiveMaximum for negative() and lt() on numbers', () => {
+        const negative = schemaFor(z.number().negative());
+        expect(negative.exclusiveMaximum).toBe(0);
+        expect(negative.maximum).toBeUndefined();
+        expect(accepts(negative, -0.5)).toBe(true);
+        expect(accepts(negative, 0)).toBe(false);
+
+        const lt = schemaFor(z.number().lt(10));
+        expect(lt.exclusiveMaximum).toBe(10);
+        expect(accepts(lt, 9.9)).toBe(true);
+        expect(accepts(lt, 10)).toBe(false);
+      });
+
+      it('turns exclusive bounds on integers into the nearest inclusive bound', () => {
+        const positiveInt = schemaFor(z.number().int().positive());
+        expect(positiveInt).toMatchObject({ type: 'integer', minimum: 1 });
+        expect(positiveInt.exclusiveMinimum).toBeUndefined();
+
+        const ltInt = schemaFor(z.number().lt(10).int());
+        expect(ltInt).toMatchObject({ type: 'integer', maximum: 9 });
+        expect(ltInt.exclusiveMaximum).toBeUndefined();
+
+        const gtFractionInt = schemaFor(z.number().int().gt(2.5));
+        expect(gtFractionInt.minimum).toBe(3);
+        expect(accepts(gtFractionInt, 3)).toBe(true);
+        expect(accepts(gtFractionInt, 2)).toBe(false);
+      });
+
+      it('keeps inclusive bounds as minimum and maximum', () => {
+        const range = schemaFor(z.number().nonnegative().max(1));
+        expect(range).toMatchObject({ minimum: 0, maximum: 1 });
+        expect(range.exclusiveMinimum).toBeUndefined();
+        expect(range.exclusiveMaximum).toBeUndefined();
+      });
     });
   });
 
